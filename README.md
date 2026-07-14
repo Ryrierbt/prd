@@ -9,6 +9,7 @@
 - 采集官网定价页，按套餐展示月付价格和年付价格
 - 使用 `app-store-scraper` 采集 Apple App Store 应用信息与评分分布
 - 使用 `@perttu/app-store-scraper` 采集 App Store 最近评论，最多重试 3 次
+- 支持通过 Meta Ad Library API 采集公开广告素材
 - 保存来源链接、采集时间和失败原因
 - 在线查看或下载 HTML 调研报告
 
@@ -68,6 +69,12 @@ npx prisma generate
 在首页的 `DeepSeek API` 区域输入并保存 API Key。密钥仅保存在本地 SQLite 数据库中，页面和报告不会显示或返回其内容。
 
 配置完成后，新建任务或重试已有任务时，系统会翻译并压缩报告中的基础信息和定价核心权益，并在成功采集 App Store 评论后对最多 30 条最新评论生成“主要好评、主要问题、产品机会”总结。报告页的“更新 AI 总结”只处理已有数据，不会重新采集。未配置 Key、没有可用评论或模型请求失败时，任务仍会正常完成，报告保留原始采集内容。
+
+## Meta 广告来源
+
+首页的 `Meta Ad Library` 区域可保存 Meta Developer Access Token。任务会按 App 名称检索 Meta 广告资料库，默认投放国家为 `US`；可用环境变量 `META_AD_LIBRARY_COUNTRY` 修改。未配置 Token 时，Meta 广告来源会显示为待配置，不影响其他来源的完成状态。
+
+实现参考 Facebook Research 的 [Ad-Library-API-Script-Repository](https://github.com/facebookresearch/Ad-Library-API-Script-Repository)，使用其 `ads_archive` 查询参数与字段。Meta 的数据可用范围和权限会随 Token、地区及平台政策变化。
 
 ## 常用命令
 

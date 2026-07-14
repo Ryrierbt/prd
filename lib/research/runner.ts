@@ -40,7 +40,7 @@ export async function runResearchTask(taskId: string) {
   await summarizeReviewsWithDeepSeek(taskId);
 
   await updateTask(taskId, taskStatuses.collectingPromotion, 74, null);
-  await collectPromotion(taskId, websiteUrl);
+  await collectPromotion(taskId, websiteUrl, task.appName);
 
   await updateTask(taskId, taskStatuses.analyzing, 88, null);
   await createRollupAnalysis(taskId);

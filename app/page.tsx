@@ -1,5 +1,6 @@
 import { TaskForm } from "@/components/task-form";
 import { DeepSeekSettings } from "@/components/deepseek-settings";
+import { MetaAdLibrarySettings } from "@/components/meta-ad-library-settings";
 import { SiteShell } from "@/components/site-shell";
 
 export default function HomePage() {
@@ -13,7 +14,10 @@ export default function HomePage() {
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-moss">采集官网、定价页和 App Store 公开数据，生成可追溯的竞品调研报告。</p>
         </section>
-        <DeepSeekSettings />
+        <div className="grid gap-5">
+          <DeepSeekSettings />
+          <MetaAdLibrarySettings />
+        </div>
       </div>
       <div className="mt-8">
         <TaskForm />
