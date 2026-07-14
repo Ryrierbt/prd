@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model ResearchTask {
+  id             String          @id @default(cuid())
+  appName        String
+  websiteUrl     String?
+  appStoreUrl    String?
+  googlePlayUrl  String?
+  keywords       String?
+  status         String          @default("WAITING")
+  progress       Int             @default(0)
+  currentStep    String          @default("等待开始")
+  errorMessage   String?
+  createdAt      DateTime        @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  sources        Source[]
+  appProfile     AppProfile?
+  pricingPlans   PricingPlan[]
+  reviews        Review[]
+  promotions     PromotionItem[]
+  analyses       AnalysisResult[]
+  report         Report?
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model Source {
+  id           String       @id @default(cuid())
+  taskId       String
+  sourceType   String
+  sourceName   String
+  url          String
+  status       String       @default("PENDING")
+  fetchedAt    DateTime?
+  rawContent   String?
+  errorMessage String?
+  task         ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([sourceType])
+}
+
+model AppProfile {
+  id          String       @id @default(cuid())
+  taskId      String       @unique
+  summary     String?
+  positioning String?
+  targetUsers String?
+  useCases    String?
+  platforms   String?
+  features    String?
+  task        ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model PricingPlan {
+  id             String       @id @default(cuid())
+  taskId         String
+  name           String
+  monthlyPrice   String?      @map("originalPrice")
+  currency       String?
+  billingPeriod  String?
+  annualPrice    String?      @map("description")
+  features       String?
+  sourceUrl      String?
+  fetchedAt      DateTime?
+  task           ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model Review {
+  id          String       @id @default(cuid())
+  taskId      String
+  platform    String
+  title       String?
+  content     String
+  rating      Int?
+  author      String?
+  publishedAt DateTime?
+  sourceUrl   String?
+  sentiment   String?
+  categories  String?
+  fetchedAt   DateTime     @default(now())
+  task        ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([platform])
+}
+
+model PromotionItem {
+  id             String       @id @default(cuid())
+  taskId         String
+  platform       String
+  title          String?
+  content        String
+  targetAudience String?
+  useCase        String?
+  sellingPoints  String?
+  sourceUrl      String?
+  publishedAt    DateTime?
+  fetchedAt      DateTime     @default(now())
+  task           ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model AnalysisResult {
+  id           String       @id @default(cuid())
+  taskId       String
+  analysisType String
+  resultJson   String
+  createdAt    DateTime     @default(now())
+  task         ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([analysisType])
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Report {
+  id          String       @id @default(cuid())
+  taskId      String       @unique
+  htmlContent String
+  filePath    String?
+  createdAt   DateTime     @default(now())
+  task        ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}

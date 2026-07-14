@@ -1,0 +1,40 @@
+{
+  "name": "overseas-app-research-tool",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@perttu/app-store-scraper": "^2.0.0",
+    "@prisma/client": "^6.10.1",
+    "app-store-scraper": "^0.18.0",
+    "cheerio": "^1.0.0",
+    "clsx": "^2.1.1",
+    "next": "^15.3.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.15.3",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.32",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4",
+    "autoprefixer": "^10.5.2",
+    "eslint": "^9.29.0",
+    "eslint-config-next": "^15.3.4",
+    "postcss": "^8.5.6",
+    "prisma": "^6.10.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
