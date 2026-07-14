@@ -22,7 +22,7 @@ export function RefreshReportButton({ taskId, aiRefresh = false }: { taskId: str
       type="button"
       onClick={refreshReport}
       disabled={isRefreshing}
-      className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-mint disabled:cursor-not-allowed disabled:opacity-60"
+      className="workspace-secondary-button"
     >
       {isRefreshing ? "更新中..." : aiRefresh ? "更新 AI 总结" : "刷新报告"}
     </button>

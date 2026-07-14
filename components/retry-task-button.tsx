@@ -25,16 +25,16 @@ export function RetryTaskButton({ taskId }: { taskId: string }) {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="workspace-retry-wrap">
       <button
         type="button"
         onClick={retry}
         disabled={isRetrying}
-        className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-mint disabled:cursor-not-allowed disabled:opacity-60"
+        className="workspace-secondary-button"
       >
         {isRetrying ? "重新采集中..." : "重新采集"}
       </button>
-      {error ? <span className="text-sm text-coral">{error}</span> : null}
+      {error ? <span className="workspace-button-error">{error}</span> : null}
     </div>
   );
 }

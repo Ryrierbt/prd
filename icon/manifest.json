@@ -1,0 +1,58 @@
+[
+  {
+    "id": "shape:HsHWswIZNbNKXt34Svjv9",
+    "index": 1,
+    "name": "Region 3",
+    "type": "icon",
+    "filename": "icon_01.png",
+    "crop": {
+      "x": 37,
+      "y": 8,
+      "w": 48,
+      "h": 48
+    },
+    "prompt": "Generate a polished linear icon icon asset based on the cropped reference. Keep consistent proportions, clean edges, transparent or app-ready background, and match the visual language of the original prototype. Region name: Region."
+  },
+  {
+    "id": "shape:0Tgx4DDcEko89FNShDBbu",
+    "index": 2,
+    "name": "Region 4",
+    "type": "icon",
+    "filename": "icon_02.png",
+    "crop": {
+      "x": 761,
+      "y": 119,
+      "w": 43,
+      "h": 38
+    },
+    "prompt": "Generate a polished linear icon icon asset based on the cropped reference. Keep consistent proportions, clean edges, transparent or app-ready background, and match the visual language of the original prototype. Region name: Region."
+  },
+  {
+    "id": "shape:zPwBbq8cwokMN9NlkkQ0R",
+    "index": 3,
+    "name": "Region 5",
+    "type": "icon",
+    "filename": "icon_03.png",
+    "crop": {
+      "x": 764,
+      "y": 352,
+      "w": 43,
+      "h": 36
+    },
+    "prompt": "Generate a polished linear icon icon asset based on the cropped reference. Keep consistent proportions, clean edges, transparent or app-ready background, and match the visual language of the original prototype. Region name: Region."
+  },
+  {
+    "id": "shape:b8KFoQhtaMGW-bV_7jGH0",
+    "index": 4,
+    "name": "Region 2",
+    "type": "icon",
+    "filename": "icon_04.png",
+    "crop": {
+      "x": 95,
+      "y": 575,
+      "w": 39,
+      "h": 37
+    },
+    "prompt": "Generate a polished linear icon icon asset based on the cropped reference. Keep consistent proportions, clean edges, transparent or app-ready background, and match the visual language of the original prototype. Region name: Region."
+  }
+]

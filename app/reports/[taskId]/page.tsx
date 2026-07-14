@@ -18,27 +18,28 @@ export default async function ReportPage({ params }: { params: Promise<{ taskId:
   }
 
   return (
-    <SiteShell>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <SiteShell activeNav="tasks">
+      <div className="workspace-page-header report-page-header">
         <div>
-          <h1 className="text-3xl font-semibold text-ink">{report.task.appName} 调研报告</h1>
-          <p className="mt-2 text-sm text-moss">生成时间：{report.createdAt.toLocaleString("zh-CN")}</p>
+          <p className="workspace-eyebrow">竞品报告</p>
+          <h1>{report.task.appName} 调研报告</h1>
+          <p>生成时间：{report.createdAt.toLocaleString("zh-CN")}</p>
         </div>
-        <div className="flex gap-3">
+        <div className="workspace-actions">
           <RefreshReportButton taskId={taskId} aiRefresh />
           <RefreshReportButton taskId={taskId} />
           <a
             href={`/api/reports/${taskId}/download`}
-            className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-white"
+            className="workspace-primary-link"
           >
             下载 HTML
           </a>
-          <Link href={`/tasks/${taskId}`} className="rounded-md border border-line px-4 py-2 text-sm font-medium text-ink hover:bg-mint">
+          <Link href={`/tasks/${taskId}`} className="workspace-secondary-link">
             返回任务
           </Link>
         </div>
       </div>
-      <iframe title="调研报告" srcDoc={report.htmlContent} className="h-[720px] w-full rounded-lg border border-line bg-white shadow-soft" />
+      <iframe title="调研报告" srcDoc={report.htmlContent} className="workspace-report-frame" />
     </SiteShell>
   );
 }

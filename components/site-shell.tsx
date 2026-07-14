@@ -1,25 +1,26 @@
 import Link from "next/link";
 
-export function SiteShell({ children }: { children: React.ReactNode }) {
+export function SiteShell({ children, activeNav = "home" }: { children: React.ReactNode; activeNav?: "home" | "tasks" }) {
   return (
-    <div className="min-h-screen bg-paper">
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-lg font-semibold text-ink">
-            海外 App 竞品调研工具
+    <div className="home-page-shell">
+      <header className="home-header">
+        <div className="home-header-inner">
+          <Link href="/" className="home-brand">
+            <img src="/icon/icon_01.png" alt="" />
+            <span>海外 App 竞品调研工具</span>
           </Link>
-          <nav className="flex items-center gap-3 text-sm text-moss">
-            <Link href="/" className="rounded-md px-3 py-2 hover:bg-mint">
+          <nav className="home-nav">
+            <Link href="/" className={`home-nav-link ${activeNav === "home" ? "active" : ""}`}>
               创建任务
             </Link>
-            <Link href="/tasks" className="rounded-md px-3 py-2 hover:bg-mint">
+            <Link href="/tasks" className={`home-nav-link ${activeNav === "tasks" ? "active" : ""}`}>
               历史任务
             </Link>
+            <span className="home-avatar" aria-hidden="true" />
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
+      <main className="home-main">{children}</main>
     </div>
   );
 }
-

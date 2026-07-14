@@ -52,13 +52,16 @@ export function MetaAdLibrarySettings() {
   }
 
   return (
-    <section className="rounded-lg border border-line bg-white p-5 shadow-soft">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-ink">Meta Ad Library</h2>
-        <span className={`text-xs font-medium ${configured ? "text-moss" : "text-coral"}`}>{configured ? "已配置" : "未配置"}</span>
+    <section className="api-config-card">
+      <div className="api-config-header">
+        <div className="api-config-title">
+          <img src="/icon/icon_03.png" alt="" />
+          <h2>Meta Ad Library</h2>
+        </div>
+        <span className={`api-status ${configured ? "configured" : "unconfigured"}`}>{configured ? "已配置" : "未配置"}</span>
       </div>
-      <form onSubmit={save} className="mt-4 grid gap-3">
-        <label className="text-sm font-medium text-ink" htmlFor="meta-ad-library-access-token">
+      <form onSubmit={save} className="api-config-form">
+        <label htmlFor="meta-ad-library-access-token">
           Access Token
         </label>
         <input
@@ -67,23 +70,23 @@ export function MetaAdLibrarySettings() {
           autoComplete="off"
           value={accessToken}
           onChange={(event) => setAccessToken(event.target.value)}
-          className="w-full rounded-md border border-line px-3 py-2 outline-none focus:border-moss"
+          className="api-token-input"
           placeholder={configured ? "输入新 Token 以替换" : "EAAB..."}
         />
-        <div className="flex items-center gap-3">
+        <div className="api-config-actions">
           <button
             type="submit"
             disabled={isSaving || !accessToken.trim()}
-            className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="api-save-button"
           >
             {isSaving ? "保存中..." : "保存"}
           </button>
           {configured ? (
-            <button type="button" onClick={clear} disabled={isSaving} className="text-sm font-medium text-coral disabled:opacity-60">
+            <button type="button" onClick={clear} disabled={isSaving} className="api-clear-button">
               清除
             </button>
           ) : null}
-          {message ? <p className="text-sm text-moss">{message}</p> : null}
+          {message ? <p className="api-config-message">{message}</p> : null}
         </div>
       </form>
     </section>
