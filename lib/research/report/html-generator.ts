@@ -196,7 +196,7 @@ export function generateResearchReport(task: ReportTask) {
     .promotion-stat span{display:block;margin-top:5px;color:#475569;font-size:12px}
     .promotion-title{display:flex;align-items:center;gap:8px;margin:0 0 10px;color:#0f172a;font-size:16px}
     .promotion-title::before{content:"";display:block;width:3px;height:16px;border-radius:999px;background:#2563eb}
-    .promotion-overview-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+    .promotion-overview-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
     .promotion-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0;box-shadow:0 1px 3px rgba(15,23,42,.04)}
     .promotion-card strong{display:block;margin-bottom:6px;color:#0f172a;font-size:14px;overflow-wrap:anywhere}
     .promotion-card p{margin:0;color:#334155;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
@@ -1331,8 +1331,8 @@ function normalizePromotionAnalysis(promotions: PromotionItem[], summary: Record
   const channels = promotionArray(summary?.channels, 6, 24);
   const targetAudiences = promotionArray(summary?.targetAudiences, 6, 32);
   const coreSellingPoints = promotionArray(summary?.coreSellingPoints, 8, 32);
-  const overview = promotionObjectArray(summary?.overview, normalizePromotionOverviewItem, 5);
-  const communicationSignals = promotionObjectArray(summary?.communicationSignals, normalizePromotionSignal, 3);
+  const overview = promotionObjectArray(summary?.overview, normalizePromotionOverviewItem, 5).filter((item) => !isPromotionDirectionCard(item.title));
+  const communicationSignals = promotionObjectArray(summary?.communicationSignals, normalizePromotionSignal, 3).filter((item) => !isPromotionDirectionCard(item.title));
   const audienceScenarios = promotionObjectArray(summary?.audienceScenarios, normalizePromotionAudienceScenario, 4);
   const strategySummary = promotionObjectArray(summary?.strategySummary, normalizePromotionStrategy, 3);
   const sourceCoverage = textValue(summary?.sourceCoverage) || formatPlatformCounts(summary?.platformCounts) || formatPlatformCounts(platformCounts);
@@ -1349,17 +1349,16 @@ function normalizePromotionAnalysis(promotions: PromotionItem[], summary: Record
     targetAudiences: normalizedAudiences,
     coreSellingPoints: normalizedSellingPoints,
     overview: overview.length
-      ? overview
-      : [
-          { title: "覆盖来源", summary: sourceCoverage || "暂未判断", details: normalizedChannels.slice(0, 4) },
-          { title: "面向人群", summary: targetAudience || "暂未判断", details: normalizedAudiences.slice(0, 4) },
-          { title: "推广方向", summary: promotionDirection || "暂未判断", details: splitChineseList(promotionDirection).slice(0, 4) },
-          { title: "使用场景", summary: useCases || "暂未判断", details: splitChineseList(useCases).slice(0, 4) },
-          { title: "核心卖点", summary: sellingPoints || "暂未判断", details: normalizedSellingPoints.slice(0, 4) }
-        ],
-    communicationSignals: communicationSignals.length
-      ? communicationSignals
-      : buildFallbackPromotionSignals(promotions, normalizedSellingPoints, promotionDirection, useCases),
+	      ? overview
+	      : [
+	          { title: "覆盖来源", summary: sourceCoverage || "暂未判断", details: normalizedChannels.slice(0, 4) },
+	          { title: "面向人群", summary: targetAudience || "暂未判断", details: normalizedAudiences.slice(0, 4) },
+	          { title: "使用场景", summary: useCases || "暂未判断", details: splitChineseList(useCases).slice(0, 4) },
+	          { title: "核心卖点", summary: sellingPoints || "暂未判断", details: normalizedSellingPoints.slice(0, 4) }
+	        ],
+	    communicationSignals: communicationSignals.length
+	      ? communicationSignals
+	      : buildFallbackPromotionSignals(promotions, normalizedSellingPoints, useCases),
     audienceScenarios: audienceScenarios.length
       ? audienceScenarios
       : buildFallbackAudienceScenarios(promotions, normalizedAudiences, normalizedChannels, useCases),
@@ -1401,14 +1400,17 @@ function normalizePromotionStrategy(value: Record<string, unknown>): PromotionSt
   return { title, points };
 }
 
-function buildFallbackPromotionSignals(promotions: PromotionItem[], sellingPoints: string[], promotionDirection: string, useCases: string) {
+function buildFallbackPromotionSignals(promotions: PromotionItem[], sellingPoints: string[], useCases: string) {
   const sourceSignals = uniquePromotionValues(promotions, "sellingPoints").slice(0, 3);
   const signals = [
     { title: "核心卖点聚焦", summary: sellingPoints.join("、") || sourceSignals.join("、") || "暂未提取到明确卖点", tags: sellingPoints.slice(0, 5) },
-    { title: "推广方向", summary: promotionDirection || "围绕产品主要能力和高频使用场景进行推广", tags: splitChineseList(promotionDirection).slice(0, 5) },
     { title: "场景覆盖", summary: useCases || "围绕官网和广告素材中的使用场景归纳", tags: splitChineseList(useCases).slice(0, 5) }
   ];
   return signals.filter((signal) => signal.summary !== "暂未提取到明确卖点" || signal.tags.length);
+}
+
+function isPromotionDirectionCard(title: string) {
+  return title.trim() === "推广方向";
 }
 
 function buildFallbackAudienceScenarios(promotions: PromotionItem[], audiences: string[], channels: string[], useCases: string) {
