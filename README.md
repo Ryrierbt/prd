@@ -7,9 +7,12 @@
 - 创建、查看和重试调研任务
 - 采集官网介绍、功能和官方推广页面
 - 采集官网定价页，按套餐展示月付价格和年付价格
-- 使用 `app-store-scraper` 采集 Apple App Store 应用信息与评分分布
-- 使用 `@perttu/app-store-scraper` 采集 App Store 最近评论，最多重试 3 次
+- 使用 GitHub 依赖 `git@github.com:Ryrierbt/app-store-scraper.git` 采集 Apple App Store 应用信息、评分分布与评论
+- App Store 评论端由独立 `app-store-scraper` 包统一处理，带浏览器请求头、多区域和每区域 3 次重试
 - 支持通过 Meta Ad Library API 采集公开广告素材
+- 支持通过 `google-ads-transparency-mcp` 采集 Google Ads Transparency Center 公开广告素材
+- 使用 DeepSeek 综合官网、App Store 与广告素材生成可点击功能标签，并展开官方能力、用户好评和风险问题
+- 使用 DeepSeek 将目标客户群体拆成行业、细分行业、组织类型、部门、岗位、场景、痛点、购买动机和证据来源
 - 保存来源链接、采集时间和失败原因
 - 在线查看或下载 HTML 调研报告
 
@@ -17,6 +20,7 @@
 
 - Node.js 20 或更高版本
 - npm 10 或更高版本
+- Python 3.10 或更高版本，或可运行该库本体的 Python 3.9 环境，仅 Google 广告来源需要
 - `sqlite3` 命令行工具，仅在首次需要手动初始化数据库时使用
 
 ## 快速启动
@@ -64,17 +68,88 @@ npx prisma generate
 4. 报告中的定价表分别展示月付价格与年付价格，均保留官网的原始币种和计价单位。
 5. 某个公开来源不可访问或无评论时，任务会标记为“部分完成”，报告会保留真实失败说明，不会用推测内容补齐。
 
+## App Store 采集
+
+App Store 应用搜索、详情、评分分布和最近评论统一通过 GitHub 依赖 `app-store-scraper` 处理：
+
+```json
+"app-store-scraper": "git+ssh://git@github.com/Ryrierbt/app-store-scraper.git"
+```
+
+该独立包内部合并了 `@perttu/app-store-scraper` 的搜索/详情/评分能力，以及 Apple Customer Reviews RSS 的多区域评论抓取逻辑。如果首页填写了 App Store 链接，系统会优先提取链接中的 `id`，避免只靠应用名搜索选错结果。
+
+最近评论使用 Apple 公开 Customer Reviews RSS 链路，并显式携带浏览器请求头。Apple 公开评论接口经常按国家/地区返回不同结果，系统默认按以下顺序尝试：
+
+```env
+APP_STORE_REVIEW_COUNTRIES="us,gb,ca,au,de,fr,it,es,nl,se"
+```
+
+默认限制为主流欧美市场，其中 `au` 作为英语主流市场保留。每个区域最多重试 3 次，某个区域成功返回评论后立即使用该区域结果；如果所有区域都为空，来源会记录失败原因。
+
+默认只读取最近评论第 1 页；如需额外读取更多页，可在 `.env` 中配置，最大 3 页：
+
+```env
+APP_STORE_REVIEW_PAGES="1"
+```
+
+如果 Apple RSS 与开源库在当前网络下都返回空，也可以配置一个兼容 `{search}` / `{country}` / `{id}` 参数的评论代理作为最后兜底。默认不配置，系统不会访问第三方代理：
+
+```env
+APP_STORE_REVIEW_PROXY_URL=""
+# 示例：
+# APP_STORE_REVIEW_PROXY_URL="https://apppan.pangjiong.com/api/reviews?search={search}&country={country}"
+```
+
 ## DeepSeek 评价总结
 
 在首页的 `DeepSeek API` 区域输入并保存 API Key。密钥仅保存在本地 SQLite 数据库中，页面和报告不会显示或返回其内容。
 
 配置完成后，新建任务或重试已有任务时，系统会翻译并压缩报告中的基础信息和定价核心权益，并在成功采集 App Store 评论后对最多 30 条最新评论生成“主要好评、主要问题、产品机会”总结。报告页的“更新 AI 总结”只处理已有数据，不会重新采集。未配置 Key、没有可用评论或模型请求失败时，任务仍会正常完成，报告保留原始采集内容。
 
+功能分析会在官网、App Store 和广告/推广素材采集后运行。DeepSeek 会生成最多 8 个功能标签；报告中的每个标签可点击展开，查看官方声称能力、证据来源、App Store 评价中的正向反馈和负向问题。未配置 DeepSeek 或请求失败时，报告会回退展示原始功能关键词。
+
+目标客户画像会在官网、定价、App Store、用户评价和广告/推广素材采集后运行。DeepSeek 会输出核心客户、高价值客户、次级客户和潜在客户，按行业、细分行业、组织类型、部门、岗位、使用场景、核心痛点、购买动机、付费价值、证据来源和置信度进行结构化展示。证据不足的客户群体会标记为“推断”，并降低置信度；未配置 DeepSeek 或请求失败时，报告会回退展示原始目标用户字段。
+
 ## Meta 广告来源
 
 首页的 `Meta Ad Library` 区域可保存 Meta Developer Access Token。任务会按 App 名称检索 Meta 广告资料库，默认投放国家为 `US`；可用环境变量 `META_AD_LIBRARY_COUNTRY` 修改。未配置 Token 时，Meta 广告来源会显示为待配置，不影响其他来源的完成状态。
 
 实现参考 Facebook Research 的 [Ad-Library-API-Script-Repository](https://github.com/facebookresearch/Ad-Library-API-Script-Repository)，使用其 `ads_archive` 查询参数与字段。Meta 的数据可用范围和权限会随 Token、地区及平台政策变化。
+
+## Google 广告来源
+
+Google 广告来源使用 GitHub 项目 [block-town/google-ads-transparency-mcp](https://github.com/block-town/google-ads-transparency-mcp.git)，查询 Google Ads Transparency Center 公开广告素材，不需要 API Key。
+
+该依赖官方声明要求 Python 3.10 或更高版本。安装到项目本地目录：
+
+```bash
+python3.10 -m pip install --target .python-packages -r requirements-google-ads.txt
+```
+
+如果当前机器只有 macOS 自带的 Python 3.9，可以只安装库本体和 `requests`，本项目会直接调用库接口，不启动 MCP 服务端：
+
+```bash
+python3 -m pip install --target .python-packages "requests>=2.31.0"
+python3 -m pip install --target .python-packages --no-deps --ignore-requires-python git+https://github.com/block-town/google-ads-transparency-mcp.git
+```
+
+如果你的 Python 命令不是 `python3`，在 `.env` 中改成实际路径：
+
+```env
+GOOGLE_ADS_TRANSPARENCY_PYTHON="python3.10"
+GOOGLE_ADS_TRANSPARENCY_REGION="anywhere"
+GOOGLE_ADS_TRANSPARENCY_LIMIT="20"
+```
+
+当前 Google 广告来源默认只保存图片形式广告，最多 `20` 条。桥接脚本会多读取一批 creative 后筛选图片素材；如果该广告主近期图片广告不足 20 条，报告会展示实际抓到的数量。如果 Google 广告依赖未安装、网络不可达或 Google Transparency Center 请求失败，该来源会记录为失败；其他采集来源不受影响。
+
+图片广告会下载到 `public/ad-assets/<任务 ID>/`，该目录已加入 `.gitignore`。如需对图片广告做 OCR，请安装 EasyOCR：
+
+```bash
+python3 -m pip install --target .python-packages -r requirements-easyocr.txt
+```
+
+OCR 使用 GitHub 项目 [JaidedAI/EasyOCR](https://github.com/JaidedAI/EasyOCR.git)。安装包会包含 PyTorch 等依赖。为避免采集任务被模型下载卡住，运行任务时不会自动下载 OCR 模型；如果模型未准备好，任务仍会保存图片广告，并在 `Google 图片广告 OCR` 来源中显示待配置原因。若已配置 DeepSeek API Key，系统会基于 OCR 文字综合判断广告面向人群、推广方向、使用场景和核心卖点。
 
 ## 常用命令
 
@@ -148,6 +223,5 @@ app/                    页面与 API 路由
 components/             任务表单、状态与进度组件
 lib/research/           采集器、分析和报告生成器
 prisma/                 SQLite Schema 与迁移
-types/                  第三方库类型声明
 agent.md                后续开发交接与环境排查记录
 ```

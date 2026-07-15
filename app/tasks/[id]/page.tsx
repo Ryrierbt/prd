@@ -39,7 +39,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             "COMPLETED",
             "PARTIAL_COMPLETED",
             "FAILED"
-          ].includes(task.status) ? <RetryTaskButton taskId={task.id} /> : null}
+          ].includes(task.status) ? <RetryTaskButton taskId={task.id} hasFailedSources={failedSources.length > 0} /> : null}
           {task.report ? (
             <Link href={`/reports/${task.id}`} className="workspace-primary-link">
               查看报告

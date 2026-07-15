@@ -16,7 +16,6 @@ export function SiteShell({ children, activeNav = "home" }: { children: React.Re
             <Link href="/tasks" className={`home-nav-link ${activeNav === "tasks" ? "active" : ""}`}>
               历史任务
             </Link>
-            <span className="home-avatar" aria-hidden="true" />
           </nav>
         </div>
       </header>

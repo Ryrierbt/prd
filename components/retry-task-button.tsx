@@ -3,21 +3,24 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function RetryTaskButton({ taskId }: { taskId: string }) {
+type RetryMode = "all" | "failed";
+
+export function RetryTaskButton({ taskId, hasFailedSources = false }: { taskId: string; hasFailedSources?: boolean }) {
   const router = useRouter();
-  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryingMode, setRetryingMode] = useState<RetryMode | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function retry() {
-    if (isRetrying) return;
+  async function retry(mode: RetryMode) {
+    if (retryingMode) return;
 
-    setIsRetrying(true);
+    setRetryingMode(mode);
     setError(null);
-    const response = await fetch(`/api/tasks/${taskId}/retry`, { method: "POST" });
-    setIsRetrying(false);
+    const endpoint = mode === "failed" ? `/api/tasks/${taskId}/retry-failed` : `/api/tasks/${taskId}/retry`;
+    const response = await fetch(endpoint, { method: "POST" });
+    setRetryingMode(null);
 
     if (!response.ok) {
-      setError("重新采集失败");
+      setError(mode === "failed" ? "失败项重新采集失败" : "重新采集失败");
       return;
     }
 
@@ -28,12 +31,22 @@ export function RetryTaskButton({ taskId }: { taskId: string }) {
     <div className="workspace-retry-wrap">
       <button
         type="button"
-        onClick={retry}
-        disabled={isRetrying}
+        onClick={() => retry("all")}
+        disabled={Boolean(retryingMode)}
         className="workspace-secondary-button"
       >
-        {isRetrying ? "重新采集中..." : "重新采集"}
+        {retryingMode === "all" ? "重新采集中..." : "重新采集"}
       </button>
+      {hasFailedSources ? (
+        <button
+          type="button"
+          onClick={() => retry("failed")}
+          disabled={Boolean(retryingMode)}
+          className="workspace-secondary-button"
+        >
+          {retryingMode === "failed" ? "失败项采集中..." : "失败项重新采集"}
+        </button>
+      ) : null}
       {error ? <span className="workspace-button-error">{error}</span> : null}
     </div>
   );

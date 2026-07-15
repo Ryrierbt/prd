@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { collectAppStore } from "@/lib/research/collectors/app-store";
-import { summarizePricingBenefitsWithDeepSeek, summarizeReviewsWithDeepSeek, translateAppProfileWithDeepSeek } from "@/lib/research/analysis/deepseek";
+import { summarizeCustomerSegmentsWithDeepSeek, summarizeFeatureAnalysisWithDeepSeek, summarizePricingBenefitsWithDeepSeek, summarizePromotionWithDeepSeek, summarizeReviewsWithDeepSeek, translateAppProfileWithDeepSeek } from "@/lib/research/analysis/deepseek";
 import { collectPricing } from "@/lib/research/collectors/pricing";
 import { collectPromotion } from "@/lib/research/collectors/promotion";
 import { collectWebsite, inferWebsiteUrl } from "@/lib/research/collectors/website";
@@ -41,11 +41,81 @@ export async function runResearchTask(taskId: string) {
 
   await updateTask(taskId, taskStatuses.collectingPromotion, 74, null);
   await collectPromotion(taskId, websiteUrl, task.appName);
+  await summarizePromotionWithDeepSeek(taskId);
+  await summarizeCustomerSegmentsWithDeepSeek(taskId);
+  await summarizeFeatureAnalysisWithDeepSeek(taskId);
 
   await updateTask(taskId, taskStatuses.analyzing, 88, null);
   await createRollupAnalysis(taskId);
 
   await updateTask(taskId, taskStatuses.generatingReport, 96, null);
+  await regenerateReportAndFinalize(taskId);
+}
+
+export async function runFailedSourcesRetry(taskId: string) {
+  const task = await prisma.researchTask.findUniqueOrThrow({
+    where: { id: taskId },
+    include: { sources: true }
+  });
+  const failedTypes = new Set(task.sources.filter((source) => source.status === "FAILED").map((source) => source.sourceType));
+
+  if (failedTypes.size === 0) {
+    await regenerateReportAndFinalize(taskId);
+    return;
+  }
+
+  const websiteUrl = inferWebsiteUrl(task.appName, task.websiteUrl);
+  const retryWebsite = failedTypes.has("WEBSITE");
+  const retryPricing = failedTypes.has("PRICING");
+  const retryAppStore = ["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"].some((type) => failedTypes.has(type));
+  const retryPromotion = ["PROMOTION", "META_AD_LIBRARY", "GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"].some((type) => failedTypes.has(type));
+
+  if (retryWebsite) {
+    await prisma.source.deleteMany({ where: { taskId, sourceType: "WEBSITE" } });
+    await updateTask(taskId, taskStatuses.collectingWebsite, 22, null);
+    await collectWebsite(taskId, task.appName, websiteUrl);
+  }
+
+  if (retryPricing) {
+    await prisma.source.deleteMany({ where: { taskId, sourceType: "PRICING" } });
+    await updateTask(taskId, taskStatuses.collectingPricing, 40, null);
+    await collectPricing(taskId, websiteUrl);
+    await summarizePricingBenefitsWithDeepSeek(taskId);
+  }
+
+  if (retryAppStore) {
+    await prisma.source.deleteMany({
+      where: { taskId, sourceType: { in: ["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"] } }
+    });
+    await updateTask(taskId, taskStatuses.collectingReviews, 58, null);
+    await collectAppStore(taskId, task.appName, task.appStoreUrl);
+    await translateAppProfileWithDeepSeek(taskId);
+    await summarizeReviewsWithDeepSeek(taskId);
+  }
+
+  if (retryPromotion) {
+    await prisma.source.deleteMany({
+      where: {
+        taskId,
+        sourceType: { in: ["PROMOTION", "META_AD_LIBRARY", "GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"] }
+      }
+    });
+    await updateTask(taskId, taskStatuses.collectingPromotion, 74, null);
+    await collectPromotion(taskId, websiteUrl, task.appName);
+    await summarizePromotionWithDeepSeek(taskId);
+  }
+
+  await updateTask(taskId, taskStatuses.analyzing, 88, null);
+  await summarizeCustomerSegmentsWithDeepSeek(taskId);
+  await summarizeFeatureAnalysisWithDeepSeek(taskId);
+  await prisma.analysisResult.deleteMany({ where: { taskId, analysisType: "ROLLUP" } });
+  await createRollupAnalysis(taskId);
+
+  await updateTask(taskId, taskStatuses.generatingReport, 96, null);
+  await regenerateReportAndFinalize(taskId);
+}
+
+async function regenerateReportAndFinalize(taskId: string) {
   const taskWithData = await prisma.researchTask.findUniqueOrThrow({
     where: { id: taskId },
     include: {

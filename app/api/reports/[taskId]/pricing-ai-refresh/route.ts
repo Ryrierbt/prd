@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { summarizeCustomerSegmentsWithDeepSeek, summarizeFeatureAnalysisWithDeepSeek, summarizePricingBenefitsWithDeepSeek, summarizePromotionWithDeepSeek, summarizeReviewsWithDeepSeek, translateAppProfileWithDeepSeek } from "@/lib/research/analysis/deepseek";
+import { summarizePricingBenefitsWithDeepSeek } from "@/lib/research/analysis/deepseek";
 import { generateResearchReport } from "@/lib/research/report/html-generator";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ taskId: string }> }) {
@@ -8,12 +8,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ta
   const exists = await prisma.researchTask.findUnique({ where: { id: taskId }, select: { id: true } });
   if (!exists) return NextResponse.json({ error: "任务不存在" }, { status: 404 });
 
-  await translateAppProfileWithDeepSeek(taskId);
   await summarizePricingBenefitsWithDeepSeek(taskId);
-  await summarizeReviewsWithDeepSeek(taskId);
-  await summarizePromotionWithDeepSeek(taskId);
-  await summarizeCustomerSegmentsWithDeepSeek(taskId);
-  await summarizeFeatureAnalysisWithDeepSeek(taskId);
 
   const task = await prisma.researchTask.findUniqueOrThrow({
     where: { id: taskId },
@@ -25,5 +20,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ta
     create: { taskId, htmlContent: generateResearchReport(task) }
   });
 
-  return NextResponse.json({ ok: true });
+  const pricingSummary = task.analyses.find((analysis) => analysis.analysisType === "DEEPSEEK_PRICING_SUMMARY");
+  const pricingError = task.analyses.find((analysis) => analysis.analysisType === "DEEPSEEK_PRICING_SUMMARY_ERROR");
+
+  return NextResponse.json({
+    ok: Boolean(pricingSummary),
+    summary: pricingSummary ? JSON.parse(pricingSummary.resultJson) : null,
+    error: pricingError ? JSON.parse(pricingError.resultJson) : null
+  });
 }
+

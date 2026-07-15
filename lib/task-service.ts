@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validators";
 import { taskStatuses } from "@/lib/research/status";
-import { runResearchTask } from "@/lib/research/runner";
+import { runFailedSourcesRetry, runResearchTask } from "@/lib/research/runner";
 
 const runningTasks = new Set<string>();
 
@@ -65,3 +65,26 @@ export async function startResearchTask(taskId: string) {
     });
 }
 
+export async function startFailedSourcesRetry(taskId: string) {
+  if (runningTasks.has(taskId)) {
+    return;
+  }
+
+  runningTasks.add(taskId);
+  runFailedSourcesRetry(taskId)
+    .catch(async (error: unknown) => {
+      const message = error instanceof Error ? error.message : "未知错误";
+      await prisma.researchTask.update({
+        where: { id: taskId },
+        data: {
+          status: taskStatuses.partial,
+          currentStep: "失败项重试失败",
+          errorMessage: message,
+          completedAt: new Date()
+        }
+      });
+    })
+    .finally(() => {
+      runningTasks.delete(taskId);
+    });
+}

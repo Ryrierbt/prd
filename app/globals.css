@@ -94,15 +94,6 @@ textarea {
   color: #145bf3;
 }
 
-.home-avatar {
-  width: 38px;
-  height: 38px;
-  margin-left: 12px;
-  border-radius: 50%;
-  background: #145bf3;
-  box-shadow: inset 0 0 0 7px #eaf1ff;
-}
-
 .home-main {
   width: min(100%, 1360px);
   margin: 0 auto;
@@ -437,12 +428,6 @@ textarea {
     display: flex;
     height: 62px;
     padding: 0 8px;
-  }
-
-  .home-avatar {
-    width: 32px;
-    height: 32px;
-    margin-left: 8px;
   }
 
   .home-main {
