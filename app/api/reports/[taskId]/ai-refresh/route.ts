@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { summarizeCustomerSegmentsWithDeepSeek, summarizeFeatureAnalysisWithDeepSeek, summarizePricingBenefitsWithDeepSeek, summarizePromotionWithDeepSeek, summarizeReviewsWithDeepSeek, translateAppProfileWithDeepSeek } from "@/lib/research/analysis/deepseek";
+import { summarizeCommunityWithDeepSeek, summarizeCustomerSegmentsWithDeepSeek, summarizeFeatureAnalysisWithDeepSeek, summarizePricingBenefitsWithDeepSeek, summarizePromotionPainPointFitWithDeepSeek, summarizePromotionWithDeepSeek, summarizeReviewsWithDeepSeek, translateAppProfileWithDeepSeek } from "@/lib/research/analysis/deepseek";
 import { generateResearchReport } from "@/lib/research/report/html-generator";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ taskId: string }> }) {
@@ -12,12 +12,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ta
   await summarizePricingBenefitsWithDeepSeek(taskId);
   await summarizeReviewsWithDeepSeek(taskId);
   await summarizePromotionWithDeepSeek(taskId);
+  await summarizePromotionPainPointFitWithDeepSeek(taskId);
+  await summarizeCommunityWithDeepSeek(taskId);
   await summarizeCustomerSegmentsWithDeepSeek(taskId);
   await summarizeFeatureAnalysisWithDeepSeek(taskId);
 
   const task = await prisma.researchTask.findUniqueOrThrow({
     where: { id: taskId },
-    include: { sources: true, appProfile: true, pricingPlans: true, reviews: true, promotions: true, analyses: true }
+    include: { sources: true, appProfile: true, pricingPlans: true, reviews: true, promotions: true, communityItems: true, analyses: true }
   });
   await prisma.report.upsert({
     where: { taskId },

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validators";
 import { taskStatuses } from "@/lib/research/status";
-import { runFailedSourcesRetry, runResearchTask } from "@/lib/research/runner";
+import { runFailedSourcesRetry, runResearchTask, runReviewSourcesRetry } from "@/lib/research/runner";
 
 const runningTasks = new Set<string>();
 
@@ -17,6 +17,7 @@ export async function createResearchTask(input: CreateTaskInput) {
           taskStatuses.collectingWebsite,
           taskStatuses.collectingPricing,
           taskStatuses.collectingReviews,
+          taskStatuses.collectingCommunity,
           taskStatuses.collectingPromotion,
           taskStatuses.analyzing,
           taskStatuses.generatingReport
@@ -79,6 +80,30 @@ export async function startFailedSourcesRetry(taskId: string) {
         data: {
           status: taskStatuses.partial,
           currentStep: "失败项重试失败",
+          errorMessage: message,
+          completedAt: new Date()
+        }
+      });
+    })
+    .finally(() => {
+      runningTasks.delete(taskId);
+    });
+}
+
+export async function startReviewSourcesRetry(taskId: string) {
+  if (runningTasks.has(taskId)) {
+    return;
+  }
+
+  runningTasks.add(taskId);
+  runReviewSourcesRetry(taskId)
+    .catch(async (error: unknown) => {
+      const message = error instanceof Error ? error.message : "未知错误";
+      await prisma.researchTask.update({
+        where: { id: taskId },
+        data: {
+          status: taskStatuses.partial,
+          currentStep: "评论重新采集失败",
           errorMessage: message,
           completedAt: new Date()
         }

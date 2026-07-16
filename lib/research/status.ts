@@ -4,6 +4,7 @@ export const taskStatuses = {
   collectingWebsite: "COLLECTING_WEBSITE",
   collectingPricing: "COLLECTING_PRICING",
   collectingReviews: "COLLECTING_REVIEWS",
+  collectingCommunity: "COLLECTING_COMMUNITY",
   collectingPromotion: "COLLECTING_PROMOTION",
   analyzing: "ANALYZING",
   generatingReport: "GENERATING_REPORT",
@@ -20,6 +21,7 @@ export const statusLabels: Record<TaskStatus, string> = {
   COLLECTING_WEBSITE: "正在收集官网信息",
   COLLECTING_PRICING: "正在收集价格和套餐",
   COLLECTING_REVIEWS: "正在收集用户评价",
+  COLLECTING_COMMUNITY: "正在收集社区讨论",
   COLLECTING_PROMOTION: "正在收集广告及推广信息",
   ANALYZING: "正在分析和分类",
   GENERATING_REPORT: "正在生成报告",
@@ -34,9 +36,9 @@ export const statusOrder: Array<{ status: TaskStatus; progress: number }> = [
   { status: taskStatuses.collectingWebsite, progress: 22 },
   { status: taskStatuses.collectingPricing, progress: 38 },
   { status: taskStatuses.collectingReviews, progress: 55 },
+  { status: taskStatuses.collectingCommunity, progress: 66 },
   { status: taskStatuses.collectingPromotion, progress: 70 },
   { status: taskStatuses.analyzing, progress: 84 },
   { status: taskStatuses.generatingReport, progress: 94 },
   { status: taskStatuses.completed, progress: 100 }
 ];
-

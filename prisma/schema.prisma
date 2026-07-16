@@ -26,6 +26,7 @@ model ResearchTask {
   pricingPlans   PricingPlan[]
   reviews        Review[]
   promotions     PromotionItem[]
+  communityItems CommunityItem[]
   analyses       AnalysisResult[]
   report         Report?
 
@@ -111,6 +112,28 @@ model PromotionItem {
   task           ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
+}
+
+model CommunityItem {
+  id              String       @id @default(cuid())
+  taskId          String
+  platform        String
+  itemType        String
+  title           String?
+  content         String
+  author          String?
+  score           Int?
+  commentCount    Int?
+  publishedAt     DateTime?
+  sourceUrl       String?
+  searchQuery     String?
+  relatedProducts String?
+  fetchedAt       DateTime     @default(now())
+  task            ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([platform])
+  @@index([itemType])
 }
 
 model AnalysisResult {

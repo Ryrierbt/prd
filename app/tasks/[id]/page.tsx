@@ -20,8 +20,13 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
     notFound();
   }
 
-  const successSources = task.sources.filter((source) => source.status === "SUCCESS");
-  const failedSources = task.sources.filter((source) => source.status === "FAILED");
+  const visibleSources = task.sources.filter((source) => source.sourceType !== "COMMUNITY_REDDIT");
+  const successSources = visibleSources.filter((source) => source.status === "SUCCESS");
+  const failedSources = visibleSources.filter((source) => source.status === "FAILED");
+  const skippedSources = visibleSources.filter((source) => source.status === "SKIPPED");
+  const reviewSourceTypes = new Set(["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS", "GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"]);
+  const hasFailedReviewSources = failedSources.some((source) => reviewSourceTypes.has(source.sourceType));
+  const hasFailedNonReviewSources = failedSources.some((source) => !reviewSourceTypes.has(source.sourceType));
 
   return (
     <SiteShell activeNav="tasks">
@@ -39,7 +44,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             "COMPLETED",
             "PARTIAL_COMPLETED",
             "FAILED"
-          ].includes(task.status) ? <RetryTaskButton taskId={task.id} hasFailedSources={failedSources.length > 0} /> : null}
+          ].includes(task.status) ? <RetryTaskButton taskId={task.id} hasFailedSources={hasFailedNonReviewSources} hasFailedReviewSources={hasFailedReviewSources} /> : null}
           {task.report ? (
             <Link href={`/reports/${task.id}`} className="workspace-primary-link">
               查看报告
@@ -87,6 +92,19 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
             {failedSources.length === 0 ? <p className="workspace-source-empty">暂无失败来源</p> : null}
           </div>
         </section>
+        {skippedSources.length ? (
+          <section className="workspace-source-panel">
+            <h2>已跳过的数据来源</h2>
+            <div className="workspace-source-list">
+              {skippedSources.map((source) => (
+                <div key={source.id} className="workspace-source-item">
+                  <p>{source.sourceName}</p>
+                  <span>{source.errorMessage ?? "当前未配置或不适用"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </SiteShell>
   );

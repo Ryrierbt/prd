@@ -12,6 +12,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ta
       pricingPlans: true,
       reviews: true,
       promotions: true,
+      communityItems: true,
       analyses: true
     }
   });

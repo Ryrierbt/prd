@@ -30,9 +30,9 @@ export async function collectPricing(taskId: string, websiteUrl: string | null) 
       sourceType: "PRICING",
       sourceName: "定价页",
       url: pricingUrl,
-      status: plans.length ? "SUCCESS" : "FAILED",
+      status: "SUCCESS",
       rawContent,
-      errorMessage: plans.length ? undefined : "定价页已抓取，但未解析出结构化套餐。",
+      errorMessage: undefined,
       fetchedAt: page.fetchedAt
     });
 

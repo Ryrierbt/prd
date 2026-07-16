@@ -7,7 +7,7 @@ export type CollectedPage = {
   fetchedAt: Date;
 };
 
-export type SourceStatus = "SUCCESS" | "FAILED" | "PENDING";
+export type SourceStatus = "SUCCESS" | "FAILED" | "PENDING" | "SKIPPED";
 
 export type ReviewCategory =
   | "好评"

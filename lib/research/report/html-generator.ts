@@ -8,25 +8,29 @@ type ReportTask = Prisma.ResearchTaskGetPayload<{
     pricingPlans: true;
     reviews: true;
     promotions: true;
+    communityItems: true;
     analyses: true;
   };
 }>;
 
 export function generateResearchReport(task: ReportTask) {
   const generatedAt = new Date();
-  const successfulSources = task.sources.filter((source) => source.status === "SUCCESS");
-  const failedSources = task.sources.filter((source) => source.status === "FAILED");
-  const completeness = Math.round((successfulSources.length / Math.max(task.sources.length, 1)) * 100);
-  const reviewTotal = task.reviews.length;
+  const visibleSources = task.sources.filter((source) => source.sourceType !== "COMMUNITY_REDDIT");
+  const successfulSources = visibleSources.filter((source) => source.status === "SUCCESS");
+  const failedSources = visibleSources.filter((source) => source.status === "FAILED");
+  const analysisModel = reportAnalysisModel(task);
   const appStoreSummary = readAnalysis(task, "APP_STORE_SUMMARY");
   const appStoreRatings = readAnalysis(task, "APP_STORE_RATINGS");
   const deepSeekReviewSummary = readAnalysis(task, "DEEPSEEK_REVIEW_SUMMARY");
   const deepSeekProfileTranslation = readAnalysis(task, "DEEPSEEK_PROFILE_TRANSLATION");
   const deepSeekPricingSummary = readAnalysis(task, "DEEPSEEK_PRICING_SUMMARY");
   const deepSeekPromotionSummary = readAnalysis(task, "DEEPSEEK_PROMOTION_SUMMARY") ?? readAnalysis(task, "DEEPSEEK_GOOGLE_ADS_SUMMARY");
+  const deepSeekPromotionPainPointFit = readAnalysis(task, "DEEPSEEK_PROMOTION_PAIN_POINT_FIT");
   const deepSeekFeatureAnalysis = readAnalysis(task, "DEEPSEEK_FEATURE_ANALYSIS");
   const deepSeekCustomerSegments = readAnalysis(task, "DEEPSEEK_CUSTOMER_SEGMENTS");
   const deepSeekCustomerSegmentsError = readAnalysis(task, "DEEPSEEK_CUSTOMER_SEGMENTS_ERROR");
+  const deepSeekCommunitySummary = readAnalysis(task, "DEEPSEEK_COMMUNITY_SUMMARY");
+  const deepSeekCommunityError = readAnalysis(task, "DEEPSEEK_COMMUNITY_SUMMARY_ERROR");
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -53,12 +57,14 @@ export function generateResearchReport(task: ReportTask) {
     .info-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-height:72px}
     .info-card strong{display:block;margin-bottom:5px;color:#1e3a8a;font-size:13px}
     .info-card p{margin:0;color:#0f172a;font-size:13px;line-height:1.55}
-    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-    .metric{border:1px solid #d8e2f3;border-radius:8px;padding:14px;background:#f8fbff}
-    .metric strong{display:block;font-size:24px}
+    .report-scope{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin-top:18px;border-top:1px solid #d8e2f3;border-bottom:1px solid #d8e2f3;background:#f8fbff}
+    .report-scope-item{min-width:0;padding:12px 14px;border-right:1px solid #d8e2f3}
+    .report-scope-item:last-child{border-right:0}
+    .report-scope-item span,.report-scope-item small{display:block;color:#64748b;font-size:12px}
+    .report-scope-item strong{display:block;margin:2px 0;color:#1d4ed8;font-size:20px;line-height:1.25;overflow-wrap:anywhere}
+    .report-scope-item.model strong{font-size:13px;color:#0f172a}
     .tag{display:inline-block;margin:3px 4px 3px 0;padding:3px 8px;border:1px solid #c8daf8;border-radius:999px;color:#2563eb;background:#f1f6ff;font-size:12px}
     .feature-panel{padding:2px 0 0}
-    .feature-meta{margin:0 0 14px;color:#475569;font-size:14px}
     .feature-list{display:grid;gap:8px}
     .feature-item{border:1px solid #d8e2f3;border-radius:8px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.04)}
     .feature-item[open]{border-color:#a9c7f8;box-shadow:0 10px 24px rgba(37,99,235,.10)}
@@ -112,13 +118,23 @@ export function generateResearchReport(task: ReportTask) {
     .review-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
     .review-filter{padding:7px 11px;border:1px solid #d8e2f3;border-radius:8px;background:#f8fbff;color:#334155;font-size:13px;white-space:nowrap}
     .review-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+    .review-platform-sources{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .review-platform-source{border:1px solid #d8e2f3;border-radius:8px;background:#f8fbff;padding:12px}
+    .review-platform-source.failed{border-color:#fecaca;background:#fff8f8}
+    .review-platform-source strong{display:block;color:#0f172a;font-size:13px}
+    .review-platform-source span{display:block;margin-top:4px;color:#475569;font-size:12px;overflow-wrap:anywhere}
     .review-metric-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:13px;min-width:0;box-shadow:0 1px 3px rgba(15,23,42,.04)}
     .review-metric-card span{display:block;margin-bottom:7px;color:#64748b;font-size:12px}
     .review-metric-card strong{display:block;color:#0f172a;font-size:26px;line-height:1.1}
     .review-metric-card small{display:block;margin-top:6px;color:#64748b;font-size:12px;overflow-wrap:anywhere}
     .stars{color:#f59e0b;letter-spacing:1px}
+    .review-summary-overview{display:grid;grid-template-columns:38px 1fr auto;gap:10px;align-items:center;padding:11px;border:1px solid #bfdbfe;border-radius:8px;background:#f8fbff}
+    .review-summary-mark{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-weight:800}
+    .review-summary-overview strong{display:block;margin-bottom:3px;color:#0f172a;font-size:13px}
+    .review-summary-overview p{margin:0;color:#475569;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
     .review-grid{display:grid;grid-template-columns:minmax(260px,36%) 1fr;gap:14px;align-items:start}
-    .sentiment-card,.review-ai-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:16px;min-width:0}
+    .review-grid-sentiment{grid-template-columns:minmax(290px,36%) minmax(0,1fr)}
+    .sentiment-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:16px;min-width:0}
     .sentiment-layout{display:grid;grid-template-columns:150px 1fr;align-items:center;gap:18px}
     .sentiment-donut{width:150px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;position:relative;background:conic-gradient(#22c55e 0 var(--positive),#cbd5e1 var(--positive) var(--neutral),#ef4444 var(--neutral) var(--negative),#f59e0b var(--negative) 100%)}
     .sentiment-donut::after{content:"";position:absolute;inset:26px;border-radius:50%;background:#fff}
@@ -128,15 +144,15 @@ export function generateResearchReport(task: ReportTask) {
     .sentiment-legend div{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:8px;color:#334155;font-size:13px}
     .legend-dot{width:10px;height:10px;border-radius:999px;background:#cbd5e1}
     .legend-dot.positive{background:#22c55e}.legend-dot.negative{background:#ef4444}.legend-dot.mixed{background:#f59e0b}
-    .review-ai-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-    .review-ai-head h3{margin:0}
-    .review-ai-overview{display:grid;grid-template-columns:38px 1fr;gap:10px;align-items:center;margin:0 0 12px;padding:11px;border:1px solid #bfdbfe;border-radius:8px;background:#f8fbff}
-    .review-ai-mark{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-weight:800}
-    .review-ai-overview strong{display:block;margin-bottom:3px;color:#0f172a;font-size:13px}
-    .review-ai-overview p{margin:0;color:#475569;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
-    .review-ai-list{display:grid;gap:0;margin:0;padding:0;list-style:none;border-top:1px solid #e5eefc}
-    .review-ai-list li{display:grid;grid-template-columns:24px 1fr auto;gap:9px;padding:11px 0;border-bottom:1px solid #eef4ff;min-width:0}
-    .review-ai-list li:last-child{border-bottom:0}
+    .insight-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .insight-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;overflow:hidden;min-width:0}
+    .insight-card h3{margin:0;padding:13px 14px;border-bottom:1px solid #e5eefc;background:#f8fbff;font-size:16px}
+    .insight-card.good h3{background:#ecfdf5;color:#047857}
+    .insight-card.bad h3{background:#fff1f2;color:#dc2626}
+    .insight-card.opportunity h3{background:#f5f3ff;color:#6d28d9}
+    .insight-list{display:grid;gap:0;margin:0;padding:0;list-style:none}
+    .insight-list li{display:grid;grid-template-columns:24px 1fr auto;gap:9px;padding:12px 14px;border-bottom:1px solid #eef4ff;min-width:0}
+    .insight-list li:last-child{border-bottom:0}
     .insight-rank{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#eff6ff;color:#2563eb;font-size:12px;font-weight:700}
     .insight-main{min-width:0}
     .insight-main strong{display:block;color:#0f172a;font-size:13px}
@@ -156,15 +172,9 @@ export function generateResearchReport(task: ReportTask) {
     .review-card p{margin:0;color:#334155;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
     .review-card-tags{margin-top:auto}
     .promotion-module{display:grid;gap:16px}
-    .promotion-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid #e5eefc}
-    .promotion-head h2{margin-bottom:4px}
-    .promotion-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;min-width:420px}
-    .promotion-stat{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:12px;text-align:center}
-    .promotion-stat strong{display:block;color:#1d4ed8;font-size:24px;line-height:1.1}
-    .promotion-stat span{display:block;margin-top:5px;color:#475569;font-size:12px}
     .promotion-title{display:flex;align-items:center;gap:8px;margin:0 0 10px;color:#0f172a;font-size:16px}
     .promotion-title::before{content:"";display:block;width:3px;height:16px;border-radius:999px;background:#2563eb}
-    .promotion-overview-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    .promotion-overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .promotion-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0;box-shadow:0 1px 3px rgba(15,23,42,.04)}
     .promotion-card strong{display:block;margin-bottom:6px;color:#0f172a;font-size:14px;overflow-wrap:anywhere}
     .promotion-card p{margin:0;color:#334155;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
@@ -178,6 +188,17 @@ export function generateResearchReport(task: ReportTask) {
     .promotion-strategy strong{display:block;margin-bottom:8px;color:#0f172a}
     .promotion-strategy ul{margin:0;padding-left:18px;color:#334155;font-size:13px}
     .promotion-strategy li{margin:4px 0;overflow-wrap:anywhere}
+    .promotion-painpoint-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .promotion-painpoint{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0}
+    .promotion-painpoint-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:7px}
+    .promotion-painpoint-head strong{color:#0f172a;font-size:14px;overflow-wrap:anywhere}
+    .promotion-painpoint p{margin:0;color:#334155;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+    .promotion-painpoint-fit{margin-top:10px;padding:10px;border-radius:6px;background:#f8fbff}
+    .promotion-painpoint-fit p{margin-top:6px}
+    .ad-fit{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:12px;font-weight:700}
+    .ad-fit.hit{background:#dcfce7;color:#15803d}.ad-fit.partial{background:#fef3c7;color:#a16207}.ad-fit.miss{background:#fee2e2;color:#dc2626}.ad-fit.unknown{background:#e2e8f0;color:#475569}
+    .promotion-painpoint-quote{margin-top:9px!important;color:#64748b!important;font-size:12px!important}
+    .promotion-painpoint .promotion-tags{margin-top:10px}
     .promotion-tags{display:flex;flex-wrap:wrap;gap:5px}
     .promotion-empty{padding:16px;border:1px dashed #b9cff0;border-radius:8px;background:#f8fbff;color:#64748b}
     .promotion-detail{border:1px solid #d8e2f3;border-radius:8px;background:#fff;overflow:hidden}
@@ -193,9 +214,36 @@ export function generateResearchReport(task: ReportTask) {
     .promotion-material p{margin:0;color:#334155;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
     .promotion-material-image{display:block;width:100%;max-height:160px;object-fit:contain;border:1px solid #d8e2f3;border-radius:8px;background:#fff}
     .promotion-material-source{margin-top:auto;font-size:13px}
-    @media(max-width:1100px){.review-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.review-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:1100px){.promotion-head{display:block}.promotion-stats{min-width:0;margin-top:12px}.promotion-overview-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.promotion-signal-grid,.promotion-strategy-grid,.promotion-material-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:860px){.layout{display:block}nav{position:static;height:auto}.grid,.info-grid,.review-metrics,.promotion-stats{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:18px}.feature-row,.feature-feedback,.customer-cards,.customer-detail-grid,.review-grid,.review-card-grid,.promotion-overview-grid,.promotion-signal-grid,.promotion-strategy-grid,.promotion-material-grid{grid-template-columns:1fr}.feature-label{padding-bottom:0}.feature-item summary{align-items:flex-start;flex-wrap:wrap}.feature-item summary::after{width:100%;margin-left:0}.customer-card-title,.review-head,.review-tabs-head{display:block}.customer-badges,.review-actions{margin-top:8px;justify-content:flex-start}.sentiment-layout{grid-template-columns:1fr}.sentiment-donut{margin:auto}}
+    .community-module{display:grid;gap:16px}
+    .community-module h2{margin-bottom:0}
+    .community-top-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.85fr);gap:12px}
+    .community-panel{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0}
+    .community-panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .community-panel-head h3{margin:0;color:#0f172a;font-size:16px}
+    .community-topic-list{display:grid;gap:0;margin:0;padding:0;list-style:none}
+    .community-topic{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:start;padding:11px 0;border-top:1px solid #e5eefc}
+    .community-topic:first-child{border-top:0;padding-top:0}
+    .community-rank{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#eff6ff;color:#2563eb;font-size:12px;font-weight:700}
+    .community-topic strong,.community-insight strong,.community-content strong{display:block;color:#0f172a;font-size:13px;overflow-wrap:anywhere}
+    .community-topic p,.community-insight p,.community-content p{margin:3px 0 0;color:#475569;font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+    .community-evidence{color:#64748b;font-size:12px;white-space:nowrap}
+    .community-platforms{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+    .community-platform{display:inline-block;padding:1px 6px;border-radius:999px;background:#f1f6ff;color:#2563eb;font-size:11px}
+    .community-insight-list{display:grid;gap:10px}
+    .community-insight{border-top:1px solid #e5eefc;padding-top:10px}
+    .community-insight:first-child{border-top:0;padding-top:0}
+    .community-analysis-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .community-analysis-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0}
+    .community-analysis-card h3{margin:0 0 10px;font-size:15px}
+    .community-analysis-card .community-insight{padding-top:9px;margin-top:9px}
+    .community-empty{padding:15px;border:1px dashed #b9cff0;border-radius:8px;background:#f8fbff;color:#64748b}
+    .community-content-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .community-content{display:flex;flex-direction:column;gap:7px;border:1px solid #d8e2f3;border-radius:8px;background:#f8fbff;padding:13px;min-width:0}
+    .community-content-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+    .community-content-meta{margin-top:auto;color:#64748b;font-size:12px;overflow-wrap:anywhere}
+    @media(max-width:1100px){.review-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.insight-grid,.review-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:1100px){.promotion-signal-grid,.promotion-strategy-grid,.promotion-painpoint-grid,.promotion-material-grid,.community-analysis-grid,.community-content-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:860px){.layout{display:block}nav{position:static;height:auto}.report-scope,.info-grid,.review-metrics,.review-platform-sources{grid-template-columns:repeat(2,minmax(0,1fr))}.report-scope-item:nth-child(2n){border-right:0}.report-scope-item:nth-child(-n+3){border-bottom:1px solid #d8e2f3}main{padding:18px}.feature-row,.feature-feedback,.customer-cards,.customer-detail-grid,.review-grid,.insight-grid,.review-card-grid,.promotion-overview-grid,.promotion-signal-grid,.promotion-strategy-grid,.promotion-painpoint-grid,.promotion-material-grid,.community-top-grid,.community-analysis-grid,.community-content-grid{grid-template-columns:1fr}.feature-label{padding-bottom:0}.feature-item summary{align-items:flex-start;flex-wrap:wrap}.feature-item summary::after{width:100%;margin-left:0}.customer-card-title,.review-head,.review-tabs-head{display:block}.customer-badges,.review-actions{margin-top:8px;justify-content:flex-start}.sentiment-layout{grid-template-columns:1fr}.sentiment-donut{margin:auto}.review-summary-overview{grid-template-columns:38px 1fr}.review-summary-overview .badge{grid-column:2}}
   </style>
 </head>
 <body>
@@ -204,21 +252,23 @@ export function generateResearchReport(task: ReportTask) {
       <strong>${escapeHtml(task.appName)}</strong>
       <a class="active" href="#overview">报告概览</a>
       <a href="#profile">基础信息</a>
-      <a href="#pricing">收费模式</a>
       <a href="#features">功能分析</a>
       <a href="#reviews">用户评价</a>
       <a href="#promotion">广告和推广</a>
+      <a href="#community">社区热议</a>
+      <a href="#pricing">收费模式</a>
       <a href="#sources">数据来源</a>
     </nav>
     <main>
       <section id="overview">
         <h1>${escapeHtml(task.appName)} 竞品调研报告</h1>
         <p class="muted">生成时间：${generatedAt.toLocaleString("zh-CN")}；最近采集时间：${latestFetchTime(task)}</p>
-        <div class="grid">
-          <div class="metric"><span>数据来源</span><strong>${task.sources.length}</strong></div>
-          <div class="metric"><span>成功来源</span><strong>${successfulSources.length}</strong></div>
-          <div class="metric"><span>用户评价</span><strong>${reviewTotal}</strong></div>
-          <div class="metric"><span>完整度</span><strong>${completeness}%</strong></div>
+        <div class="report-scope">
+          <div class="report-scope-item"><span>采集来源</span><strong>${successfulSources.length}/${visibleSources.length}</strong><small>成功 / 总计</small></div>
+          <div class="report-scope-item"><span>定价方案</span><strong>${task.pricingPlans.length}</strong><small>已提取套餐</small></div>
+          <div class="report-scope-item"><span>评价样本</span><strong>${task.reviews.length}</strong><small>Apple 与 Google Play</small></div>
+          <div class="report-scope-item"><span>推广素材</span><strong>${task.promotions.length}</strong><small>官网、Google、Meta 等</small></div>
+          <div class="report-scope-item model"><span>AI 分析模型</span><strong>${escapeHtml(analysisModel)}</strong><small>独立分析请求</small></div>
         </div>
         ${failedSources.length ? `<p class="warning">部分来源采集失败，报告已保留缺失说明，不会用推测内容冒充事实。</p>` : ""}
       </section>
@@ -232,6 +282,23 @@ export function generateResearchReport(task: ReportTask) {
           <div class="info-card"><strong>支持平台</strong><p>${escapeHtml(profileValue(deepSeekProfileTranslation, "platforms", task.appProfile?.platforms))}</p></div>
         </div>
         ${renderCustomerSegments(deepSeekCustomerSegments, task.appProfile?.targetUsers, deepSeekCustomerSegmentsError)}
+      </section>
+
+      <section id="features">
+        <h2>功能分析</h2>
+        ${renderDeepSeekFeatureAnalysis(deepSeekFeatureAnalysis, task.appProfile?.features)}
+      </section>
+
+      <section id="reviews">
+        ${renderReviewAnalysisSection(task, appStoreSummary, appStoreRatings, deepSeekReviewSummary)}
+      </section>
+
+      <section id="promotion">
+        ${renderPromotionSection(task.promotions, deepSeekPromotionSummary, deepSeekPromotionPainPointFit)}
+      </section>
+
+      <section id="community">
+        ${renderCommunitySection(task.communityItems, deepSeekCommunitySummary, deepSeekCommunityError)}
       </section>
 
       <section id="pricing">
@@ -249,25 +316,12 @@ export function generateResearchReport(task: ReportTask) {
         <p class="muted">价格保留原始币种与页面价格，不自动换算人民币。</p>
       </section>
 
-      <section id="features">
-        <h2>功能分析</h2>
-        ${renderDeepSeekFeatureAnalysis(deepSeekFeatureAnalysis, task.appProfile?.features)}
-      </section>
-
-      <section id="reviews">
-        ${renderReviewAnalysisSection(task, appStoreSummary, appStoreRatings, deepSeekReviewSummary)}
-      </section>
-
-      <section id="promotion">
-        ${renderPromotionSection(task.promotions, deepSeekPromotionSummary)}
-      </section>
-
       <section id="sources">
         <h2>数据来源</h2>
         <table>
           <thead><tr><th>来源名称</th><th>类型</th><th>状态</th><th>采集时间</th><th>链接/错误</th></tr></thead>
           <tbody>
-            ${task.sources
+            ${visibleSources
               .map(
                 (source) => `<tr><td>${escapeHtml(source.sourceName)}</td><td>${escapeHtml(source.sourceType)}</td><td>${escapeHtml(source.status)}</td><td>${source.fetchedAt?.toLocaleString("zh-CN") ?? "暂未获取"}</td><td class="source">${source.status === "SUCCESS" ? `<a href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.url)}</a>` : escapeHtml(source.errorMessage || "未知错误")}</td></tr>`
               )
@@ -350,7 +404,7 @@ function renderReviewAnalysisSection(
   deepSeekReviewSummary: Record<string, unknown> | null
 ) {
   const stats = buildReviewStats(task.reviews, appStoreSummary);
-  const deepSeekInsights = reviewInsights(deepSeekReviewSummary, stats.total);
+  const deepSeekInsights = reviewInsightGroups(deepSeekReviewSummary, stats.total);
   const positiveReviews = representativeReviews(task.reviews, "positive");
   const negativeReviews = representativeReviews(task.reviews, "negative");
   const requestReviews = representativeReviews(task.reviews, "request");
@@ -366,7 +420,6 @@ function renderReviewAnalysisSection(
     <div class="review-head">
       <div>
         <h2>用户评价分析</h2>
-        <p class="muted">分析范围：从 App Store 最新评论中筛选的 ${escapeHtml(String(stats.total))} 条高质量样本${stats.ratingCount !== "暂未获取" ? `；公开评分数 ${escapeHtml(stats.ratingCount)}` : ""}</p>
       </div>
       <div class="review-actions">
         <span class="review-filter">国家：全部国家</span>
@@ -381,7 +434,8 @@ function renderReviewAnalysisSection(
       <div class="review-metric-card"><span>负面评论占比</span><strong>${stats.negativeRate}%</strong><small>${stats.negative} 条</small></div>
       <div class="review-metric-card"><span>包含功能诉求</span><strong>${stats.featureRequests}</strong><small>${stats.featureRequestRate}% 的评论</small></div>
     </div>
-    <div class="review-grid">
+    ${renderReviewPlatformSources(task.sources, task.reviews)}
+    <div class="review-grid review-grid-sentiment">
       <div class="sentiment-card">
         <h3>情感分布</h3>
         <div class="sentiment-layout">
@@ -394,8 +448,9 @@ function renderReviewAnalysisSection(
           </div>
         </div>
       </div>
-      ${renderReviewAIInsights(deepSeekReviewSummary, model, stats, deepSeekInsights)}
+      ${renderReviewOverview(deepSeekReviewSummary, model, stats)}
     </div>
+    ${renderInsightGrid(deepSeekInsights.positiveInsights, deepSeekInsights.problemInsights, deepSeekInsights.opportunityInsights)}
     <div>
       <div class="review-tabs-head">
         <h3>代表性评论</h3>
@@ -410,8 +465,24 @@ function renderReviewAnalysisSection(
       ${renderReviewPanel("negative", negativeReviews, false)}
       ${renderReviewPanel("request", requestReviews, false)}
     </div>
-    <p class="muted">数据基于已采集的 App Store 评价正文生成；评分概览和评论正文来自不同公开接口时，不会用评分数据伪造成单条评论。</p>
+    <p class="muted">数据基于已采集的 Apple App Store 与 Google Play 评价正文生成；评分概览和评论正文来自不同公开接口时，不会用评分数据伪造成单条评论。</p>
   </div>`;
+}
+
+function renderReviewPlatformSources(sources: ReportTask["sources"], reviews: ReviewItem[]) {
+  const platforms = [
+    { name: "Apple App Store", platform: "Apple App Store", sourceType: "APP_STORE_REVIEWS" },
+    { name: "Google Play", platform: "Google Play Store", sourceType: "GOOGLE_PLAY_REVIEWS" }
+  ];
+  return `<div class="review-platform-sources">${platforms
+    .map(({ name, platform, sourceType }) => {
+      const source = sources.filter((item) => item.sourceType === sourceType).at(-1);
+      const count = reviews.filter((review) => review.platform === platform).length;
+      const failed = source?.status === "FAILED";
+      const status = failed ? source.errorMessage || "评论采集失败" : source?.status === "SUCCESS" ? `已采集，${count} 条高质量样本` : "未采集";
+      return `<div class="review-platform-source${failed ? " failed" : ""}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(status)}</span></div>`;
+    })
+    .join("")}</div>`;
 }
 
 function buildReviewStats(reviews: ReviewItem[], appStoreSummary: Record<string, unknown> | null): ReviewStats {
@@ -440,44 +511,32 @@ function buildReviewStats(reviews: ReviewItem[], appStoreSummary: Record<string,
   };
 }
 
-function renderReviewAIInsights(
-  summary: Record<string, unknown> | null,
-  model: string,
-  stats: ReviewStats,
-  insights: ReviewInsight[]
-) {
+function renderReviewOverview(summary: Record<string, unknown> | null, model: string, stats: ReviewStats) {
   const overview = textValue(summary?.overview).slice(0, 180) || `当前共分析 ${stats.total} 条评论，正面占比 ${stats.positiveRate}%，负面占比 ${stats.negativeRate}%。`;
-  return `<div class="review-ai-card">
-    <div class="review-ai-head"><h3>AI 评论洞察</h3><span class="badge">由 ${escapeHtml(model)} 生成</span></div>
-    <div class="review-ai-overview"><span class="review-ai-mark">AI</span><div><strong>总结概览</strong><p>${escapeHtml(overview)}</p></div></div>
-    ${insights.length ? `<ol class="review-ai-list">${insights
-      .map(
-        (insight, index) =>
-          `<li><span class="insight-rank">${index + 1}</span><span class="insight-main"><strong>${escapeHtml(insight.title)}</strong><span>${escapeHtml(insight.summary)}${insight.quote ? ` · “${escapeHtml(insight.quote)}”` : ""}${insight.count ? ` · ${insight.count} 条证据（${insight.percent}%）` : ""}</span></span><span class="severity ${insight.badgeKind}">${escapeHtml(insight.badge)}</span></li>`
-      )
-      .join("")}</ol>` : `<p class="muted">暂无可由 AI 支撑的评论洞察。</p>`}
-  </div>`;
+  return `<div class="review-summary-overview"><span class="review-summary-mark">AI</span><div><strong>总结概览</strong><p>${escapeHtml(overview)}</p></div><span class="badge">由 ${escapeHtml(model)} 生成</span></div>`;
 }
 
-function reviewInsights(summary: Record<string, unknown> | null, totalReviews: number) {
-  const unified = normalizeReviewInsights(summary?.insights, totalReviews, "洞察", "medium", true, 8);
-  if (unified.length) return unified;
-
-  return [
-    ...normalizeReviewInsights(summary?.positiveInsights, totalReviews, "正面", "good", false, 5),
-    ...normalizeReviewInsights(summary?.problemInsights, totalReviews, "问题", "bad", false, 5),
-    ...normalizeReviewInsights(summary?.opportunityInsights, totalReviews, "机会", "medium", false, 5)
-  ].slice(0, 8);
+function reviewInsightGroups(summary: Record<string, unknown> | null, totalReviews: number) {
+  const groups = {
+    positiveInsights: normalizeReviewInsights(summary?.positiveInsights, totalReviews, "正面", "good"),
+    problemInsights: normalizeReviewInsights(summary?.problemInsights, totalReviews, "问题", "bad"),
+    opportunityInsights: normalizeReviewInsights(summary?.opportunityInsights, totalReviews, "机会", "medium")
+  };
+  if (groups.positiveInsights.length || groups.problemInsights.length || groups.opportunityInsights.length || !Array.isArray(summary?.insights)) {
+    return groups;
+  }
+  return {
+    positiveInsights: normalizeReviewInsights(summary.insights.filter((item) => reviewInsightKindFromRecord(item) === "positive"), totalReviews, "正面", "good"),
+    problemInsights: normalizeReviewInsights(summary.insights.filter((item) => reviewInsightKindFromRecord(item) === "problem"), totalReviews, "问题", "bad"),
+    opportunityInsights: normalizeReviewInsights(summary.insights.filter((item) => reviewInsightKindFromRecord(item) === "opportunity"), totalReviews, "机会", "medium")
+  };
 }
 
-function normalizeReviewInsights(
-  value: unknown,
-  totalReviews: number,
-  fallbackBadge: string,
-  fallbackBadgeKind: ReviewInsight["badgeKind"],
-  useItemKind: boolean,
-  limit: number
-) {
+function reviewInsightKindFromRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? textValue((value as Record<string, unknown>).kind) : "";
+}
+
+function normalizeReviewInsights(value: unknown, totalReviews: number, fallbackBadge: string, badgeKind: ReviewInsight["badgeKind"]) {
   if (!Array.isArray(value)) return [];
   return value
     .map((item) => {
@@ -491,7 +550,6 @@ function normalizeReviewInsights(
         : [];
       const confidence = textValue(record.confidence);
       const severity = textValue(record.severity);
-      const badgeKind = useItemKind ? reviewInsightKind(textValue(record.kind)) : fallbackBadgeKind;
       const badge = badgeKind === "bad" ? severity || confidence || fallbackBadge : confidence || severity || fallbackBadge;
       if (!title || (!summary && !quote)) return null;
       return {
@@ -505,13 +563,26 @@ function normalizeReviewInsights(
       };
     })
     .filter((item): item is ReviewInsight => Boolean(item))
-    .slice(0, limit);
+    .slice(0, 5);
 }
 
-function reviewInsightKind(value: string): ReviewInsight["badgeKind"] {
-  if (value === "positive") return "good";
-  if (value === "problem") return "bad";
-  return "medium";
+function renderInsightGrid(positiveInsights: ReviewInsight[], problemInsights: ReviewInsight[], opportunityInsights: ReviewInsight[]) {
+  const cards = [
+    renderInsightCard("用户认可的亮点", positiveInsights, "good"),
+    renderInsightCard("用户集中抱怨的问题", problemInsights, "bad"),
+    renderInsightCard("用户诉求与产品机会", opportunityInsights, "opportunity")
+  ].filter(Boolean);
+  return cards.length ? `<div class="insight-grid">${cards.join("")}</div>` : "";
+}
+
+function renderInsightCard(title: string, insights: ReviewInsight[], kind: "good" | "bad" | "opportunity") {
+  if (!insights.length) return "";
+  return `<div class="insight-card ${kind}"><h3>${escapeHtml(title)}</h3><ol class="insight-list">${insights
+    .map(
+      (insight, index) =>
+        `<li><span class="insight-rank">${index + 1}</span><span class="insight-main"><strong>${escapeHtml(insight.title)}</strong><span>${escapeHtml(insight.summary)}${insight.quote ? ` · “${escapeHtml(insight.quote)}”` : ""}${insight.count ? ` · ${insight.count} 条证据（${insight.percent}%）` : ""}</span></span><span class="severity ${insight.badgeKind}">${escapeHtml(insight.badge)}</span></li>`
+    )
+    .join("")}</ol></div>`;
 }
 
 function renderReviewPanel(type: string, reviews: ReviewItem[], active: boolean) {
@@ -615,12 +686,7 @@ function renderDeepSeekFeatureAnalysis(summary: Record<string, unknown> | null, 
     return renderFallbackFeatureAnalysis(fallbackFeatures);
   }
 
-  const model = typeof summary?.model === "string" ? summary.model : "DeepSeek";
-  const sourceCount = typeof summary?.sourceCount === "number" ? summary.sourceCount : "若干";
-  const reviewCount = typeof summary?.reviewCount === "number" ? summary.reviewCount : "若干";
-  const promotionCount = typeof summary?.promotionCount === "number" ? summary.promotionCount : "若干";
-
-  return `<div class="feature-panel"><p class="feature-meta">基于 ${escapeHtml(String(sourceCount))} 个公开来源、${escapeHtml(String(reviewCount))} 条 App Store 评价和 ${escapeHtml(String(promotionCount))} 条广告/推广素材生成 · 模型：${escapeHtml(model)}</p><div class="feature-list">${features
+  return `<div class="feature-panel"><div class="feature-list">${features
     .map(
       (feature, index) => `<details class="feature-item"${index === 0 ? " open" : ""}><summary>${escapeHtml(feature.tag)}<span>可信度：${escapeHtml(feature.confidence)}</span></summary><div class="feature-body"><div class="feature-row"><div class="feature-label">官方声称能力</div><div class="feature-value">${escapeHtml(localizedOfficialClaim(feature.officialClaim))}</div></div><div class="feature-row"><div class="feature-label">证据来源</div><div class="feature-value">${feature.evidenceSources.map((source) => `<span class="tag">${escapeHtml(source)}</span>`).join("") || "暂未标注"}</div></div><div class="feature-feedback"><div class="feature-feedback-box"><strong>用户正向反馈</strong>${renderFeatureList(feature.userPros, "暂无用户评价反馈，当前仅保留官方/商店/广告证据。")}</div><div class="feature-feedback-box risk"><strong>用户负向反馈 / 风险</strong>${renderFeatureList(feature.userCons, "暂无用户评价反馈，尚未发现明确风险。")}</div></div></div></details>`
     )
@@ -671,7 +737,7 @@ function renderFallbackFeatureAnalysis(value?: string | null) {
   const tags = value?.split(/[、,]/).map((item) => item.trim()).filter(Boolean) ?? [];
   if (!tags.length) return "<p>暂未获取</p>";
 
-  return `<div class="feature-panel"><p class="feature-meta">基于官网和 App Store 公开文本提取。配置 DeepSeek 后会补充官方能力、用户评价优缺点和可信度。</p><div class="feature-list">${tags
+  return `<div class="feature-panel"><div class="feature-list">${tags
     .map(
       (tag, index) => `<details class="feature-item"${index === 0 ? " open" : ""}><summary>${escapeHtml(tag)}<span>可信度：待分析</span></summary><div class="feature-body"><div class="feature-row"><div class="feature-label">官方声称能力</div><div class="feature-value">公开文本中出现该功能关键词，尚未完成 DeepSeek 结构化分析。</div></div><div class="feature-row"><div class="feature-label">证据来源</div><div class="feature-value"><span class="tag">官网</span><span class="tag">App Store</span></div></div><div class="feature-feedback"><div class="feature-feedback-box"><strong>用户正向反馈</strong><p class="muted">暂无用户评价反馈。</p></div><div class="feature-feedback-box risk"><strong>用户负向反馈 / 风险</strong><p class="muted">暂无用户评价反馈。</p></div></div></div></details>`
     )
@@ -712,10 +778,6 @@ function renderCustomerSegments(summary: Record<string, unknown> | null, fallbac
     return `<div class="customer-module"><h3>目标客户群体</h3>${errorMessage ? `<p class="warning">结构化客户画像生成失败：${escapeHtml(errorMessage)}。当前显示旧版粗粒度目标用户字段。</p>` : ""}<p class="muted">${escapeHtml(fallbackTargetUsers || "暂无结构化客户画像。配置 DeepSeek 后，可基于官网、定价、App Store、评论和广告生成分层客户画像。")}</p></div>`;
   }
 
-  const model = typeof summary?.model === "string" ? summary.model : "DeepSeek";
-  const sourceCount = typeof summary?.sourceCount === "number" ? summary.sourceCount : "若干";
-  const reviewCount = typeof summary?.reviewCount === "number" ? summary.reviewCount : "若干";
-  const promotionCount = typeof summary?.promotionCount === "number" ? summary.promotionCount : "若干";
   const groups: Array<[string, string]> = [
     ["core", "核心客户群体"],
     ["high_value", "高价值客户"],
@@ -725,7 +787,7 @@ function renderCustomerSegments(summary: Record<string, unknown> | null, fallbac
 
 	  return `<div class="customer-module"><div class="customer-head"><h3>目标客户群体</h3><span class="badge">查看全部</span></div><div class="customer-tabs">${groups
 	    .map(([type, label], index) => `<button class="customer-tab${index === 0 ? " active" : ""}" type="button" data-customer-tab="${escapeHtml(type)}">${escapeHtml(label)}</button>`)
-	    .join("")}</div><p class="feature-meta">基于 ${escapeHtml(String(sourceCount))} 个公开来源、${escapeHtml(String(reviewCount))} 条 App Store 评价和 ${escapeHtml(String(promotionCount))} 条广告/推广素材生成 · 模型：${escapeHtml(model)}</p>${groups
+	    .join("")}</div>${groups
 	    .map(([type], index) => renderCustomerCardsPanel(type, prioritizedCustomerSegments(segments.filter((segment) => segment.segmentType === type)).slice(0, 3), index === 0))
 	    .join("")}</div>`;
 }
@@ -829,11 +891,13 @@ function formatBillingPeriod(value?: string | null) {
   if (value === "month") return "月付";
   if (value === "year") return "年付";
   if (value === "month/year") return "月付 / 年付";
+  if (value === "unknown") return "暂未判断";
   return "暂未获取";
 }
 
 function latestFetchTime(task: ReportTask) {
   const times = task.sources
+    .filter((source) => source.sourceType !== "COMMUNITY_REDDIT")
     .map((source) => source.fetchedAt?.getTime())
     .filter((time): time is number => Boolean(time));
   return times.length ? new Date(Math.max(...times)).toLocaleString("zh-CN") : "暂未获取";
@@ -848,6 +912,177 @@ function readAnalysis(task: ReportTask, analysisType: string) {
   } catch {
     return null;
   }
+}
+
+function reportAnalysisModel(task: ReportTask) {
+  const models = task.analyses
+    .filter((analysis) => analysis.analysisType.startsWith("DEEPSEEK_"))
+    .flatMap((analysis) => {
+      try {
+        const value = JSON.parse(analysis.resultJson) as Record<string, unknown>;
+        return typeof value.model === "string" && value.model.trim() ? [value.model.trim()] : [];
+      } catch {
+        return [];
+      }
+    });
+  const uniqueModels = Array.from(new Set(models));
+  return uniqueModels.length ? uniqueModels.join(" / ") : "未配置或降级";
+}
+
+type CommunityItem = ReportTask["communityItems"][number];
+
+type CommunityEvidenceInsight = {
+  title: string;
+  summary: string;
+  evidenceIndexes: number[];
+  confidence: string;
+};
+
+type CommunityTopic = CommunityEvidenceInsight & {
+  platforms: string[];
+  heat: string;
+};
+
+type CommunityFlow = {
+  fromProduct: string;
+  toProducts: string[];
+  reason: string;
+  evidenceIndexes: number[];
+  confidence: string;
+};
+
+type CommunityReviewGap = {
+  title: string;
+  reviewerClaim: string;
+  userFeedback: string;
+  gap: string;
+  evidenceIndexes: number[];
+  confidence: string;
+};
+
+type CommunityOpportunity = CommunityEvidenceInsight & { priority: string };
+
+function renderCommunitySection(items: CommunityItem[], summary: Record<string, unknown> | null, errorSummary: Record<string, unknown> | null) {
+  if (!items.length) {
+    const error = textValue(errorSummary?.message);
+    return `<div class="community-module"><h2>社区热议</h2>${error ? `<p class="warning">社区讨论分析失败：${escapeHtml(error)}</p>` : ""}<div class="community-empty">暂未采集到可用的 YouTube 视频或评论。请检查网络和 YouTube 公开评论状态。</div></div>`;
+  }
+
+  const analysis = normalizeCommunityAnalysis(summary);
+  const representativeItems = representativeCommunityItems(items);
+  const error = textValue(errorSummary?.message);
+  return `<div class="community-module">
+    <h2>社区热议</h2>
+    ${error ? `<p class="warning">AI 社区分析失败：${escapeHtml(error)}。下方仍保留已采集的代表内容。</p>` : ""}
+    <div class="community-top-grid">
+      <div class="community-panel">
+        <div class="community-panel-head"><h3>YouTube 热点 Top 5</h3></div>
+        ${analysis.hotTopics.length ? `<ol class="community-topic-list">${analysis.hotTopics.map(renderCommunityTopic).join("")}</ol>` : `<p class="community-empty">暂无足够证据生成 YouTube 热点。</p>`}
+      </div>
+      <div class="community-panel">
+        <div class="community-panel-head"><h3>用户为什么寻找替代品</h3></div>
+        ${renderCommunityInsightList(analysis.alternativeReasons, "暂无明确的替代品迁移动机。")}
+      </div>
+    </div>
+    <div class="community-analysis-grid">
+      ${renderCommunityFlowCard(analysis.competitorFlows)}
+      ${renderCommunityGapCard(analysis.reviewGaps)}
+      ${renderCommunityOpportunityCard(analysis.opportunities)}
+    </div>
+    <div>
+      <div class="community-panel-head"><h3>代表视频和评论</h3><span class="badge">可打开原始来源</span></div>
+      <div class="community-content-grid">${representativeItems.map(renderCommunityContent).join("")}</div>
+    </div>
+  </div>`;
+}
+
+function normalizeCommunityAnalysis(summary: Record<string, unknown> | null) {
+  const records = (value: unknown) => (Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item))) : []);
+  const indexes = (value: unknown) => reportNumberList(value, 8);
+  const evidence = (value: Record<string, unknown>): CommunityEvidenceInsight | null => {
+    const title = textValue(value.title).slice(0, 48);
+    const summaryText = textValue(value.summary).slice(0, 140);
+    const evidenceIndexes = indexes(value.evidenceIndexes);
+    return title && summaryText && evidenceIndexes.length ? { title, summary: summaryText, evidenceIndexes, confidence: textValue(value.confidence).slice(0, 8) } : null;
+  };
+  const hotTopics = records(summary?.hotTopics)
+    .map((value) => {
+      const base = evidence(value);
+      return base ? { ...base, platforms: stringArray(value.platforms).slice(0, 2), heat: textValue(value.heat).slice(0, 8) } : null;
+    })
+    .filter((item): item is CommunityTopic => Boolean(item))
+    .slice(0, 5);
+  const alternativeReasons = records(summary?.alternativeReasons).map(evidence).filter((item): item is CommunityEvidenceInsight => Boolean(item)).slice(0, 5);
+  const competitorFlows = records(summary?.competitorFlows)
+    .map((value) => {
+      const fromProduct = textValue(value.fromProduct).slice(0, 60);
+      const toProducts = stringArray(value.toProducts).slice(0, 5);
+      const reason = textValue(value.reason).slice(0, 140);
+      const evidenceIndexes = indexes(value.evidenceIndexes);
+      return fromProduct && toProducts.length && reason && evidenceIndexes.length ? { fromProduct, toProducts, reason, evidenceIndexes, confidence: textValue(value.confidence).slice(0, 8) } : null;
+    })
+    .filter((item): item is CommunityFlow => Boolean(item))
+    .slice(0, 5);
+  const reviewGaps = records(summary?.reviewGaps)
+    .map((value) => {
+      const title = textValue(value.title).slice(0, 48);
+      const reviewerClaim = textValue(value.reviewerClaim).slice(0, 110);
+      const userFeedback = textValue(value.userFeedback).slice(0, 110);
+      const gap = textValue(value.gap).slice(0, 140);
+      const evidenceIndexes = indexes(value.evidenceIndexes);
+      return title && reviewerClaim && userFeedback && gap && evidenceIndexes.length ? { title, reviewerClaim, userFeedback, gap, evidenceIndexes, confidence: textValue(value.confidence).slice(0, 8) } : null;
+    })
+    .filter((item): item is CommunityReviewGap => Boolean(item))
+    .slice(0, 5);
+  const opportunities = records(summary?.opportunities)
+    .map((value) => {
+      const base = evidence(value);
+      return base ? { ...base, priority: textValue(value.priority).slice(0, 8) } : null;
+    })
+    .filter((item): item is CommunityOpportunity => Boolean(item))
+    .slice(0, 5);
+  return { hotTopics, alternativeReasons, competitorFlows, reviewGaps, opportunities };
+}
+
+function renderCommunityTopic(item: CommunityTopic, index: number) {
+  const platforms = item.platforms.length ? item.platforms : ["社区样本"];
+  return `<li class="community-topic"><span class="community-rank">${index + 1}</span><div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><div class="community-platforms">${platforms.map((platform) => `<span class="community-platform">${escapeHtml(platform)}</span>`).join("")}</div></div><span class="community-evidence">${item.evidenceIndexes.length} 条证据</span></li>`;
+}
+
+function renderCommunityInsightList(items: CommunityEvidenceInsight[], emptyText: string) {
+  return items.length
+    ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="community-evidence">${item.evidenceIndexes.length} 条证据${item.confidence ? ` · 置信度${escapeHtml(item.confidence)}` : ""}</span></div>`).join("")}</div>`
+    : `<p class="muted">${escapeHtml(emptyText)}</p>`;
+}
+
+function renderCommunityFlowCard(items: CommunityFlow[]) {
+  return `<div class="community-analysis-card"><h3>竞品推荐流向</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.fromProduct)} -> ${escapeHtml(item.toProducts.join("、"))}</strong><p>${escapeHtml(item.reason)}</p><div class="community-platforms">${item.toProducts.map((product) => `<span class="community-platform">${escapeHtml(product)}</span>`).join("")}</div></div>`).join("")}</div>` : `<p class="muted">样本中暂无明确的竞品流向。</p>`}</div>`;
+}
+
+function renderCommunityGapCard(items: CommunityReviewGap[]) {
+  return `<div class="community-analysis-card"><h3>视频测评与真实反馈差距</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>测评：${escapeHtml(item.reviewerClaim)}</p><p>反馈：${escapeHtml(item.userFeedback)}</p><p>${escapeHtml(item.gap)}</p></div>`).join("")}</div>` : `<p class="muted">暂无同时具备测评与用户反馈证据的差距判断。</p>`}</div>`;
+}
+
+function renderCommunityOpportunityCard(items: CommunityOpportunity[]) {
+  return `<div class="community-analysis-card"><h3>产品机会</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="community-evidence">${item.evidenceIndexes.length} 条证据${item.priority ? ` · 优先级${escapeHtml(item.priority)}` : ""}</span></div>`).join("")}</div>` : `<p class="muted">暂无证据充分的产品机会。</p>`}</div>`;
+}
+
+function representativeCommunityItems(items: CommunityItem[]) {
+  const selected: CommunityItem[] = [];
+  const add = (item: CommunityItem) => {
+    if (!selected.some((existing) => existing.id === item.id) && selected.length < 6) selected.push(item);
+  };
+  const sorted = [...items].sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || (right.publishedAt?.getTime() ?? 0) - (left.publishedAt?.getTime() ?? 0));
+  for (const type of ["POST", "VIDEO", "COMMENT"]) sorted.filter((item) => item.itemType === type).slice(0, 2).forEach(add);
+  sorted.forEach(add);
+  return selected;
+}
+
+function renderCommunityContent(item: CommunityItem) {
+  const title = item.title || trimText(item.content, 64) || "社区内容";
+  const type = item.itemType === "VIDEO" ? "YouTube 视频" : "YouTube 评论";
+  const metadata = [item.author || "匿名", item.publishedAt ? item.publishedAt.toLocaleDateString("zh-CN") : "日期未知", item.score !== null ? `热度 ${item.score}` : ""].filter(Boolean).join(" · ");
+  return `<article class="community-content"><div class="community-content-head"><span class="badge">${escapeHtml(type)}</span><span class="community-evidence">${escapeHtml(item.platform)}</span></div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(trimText(item.content, 180))}</p><span class="community-content-meta">${escapeHtml(metadata)}</span>${item.sourceUrl ? `<a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer">打开来源</a>` : ""}</article>`;
 }
 
 type PromotionItem = ReportTask["promotions"][number];
@@ -869,32 +1104,31 @@ type PromotionStrategy = {
   points: string[];
 };
 
-function renderPromotionSection(promotions: PromotionItem[], summary: Record<string, unknown> | null) {
+type PromotionPainPoint = {
+  title: string;
+  summary: string;
+  reviewIndexes: number[];
+  quote: string;
+  severity: string;
+  confidence: string;
+  adFit: "命中" | "部分命中" | "未命中" | "无法判断";
+  adFitReason: string;
+  matchedAdIndexes: number[];
+};
+
+function renderPromotionSection(
+  promotions: PromotionItem[],
+  summary: Record<string, unknown> | null,
+  painPointSummary: Record<string, unknown> | null
+) {
   const analysis = normalizePromotionAnalysis(promotions, summary);
-  const model = textValue(summary?.model) || "DeepSeek";
-  const adCount = typeof summary?.adCount === "number" ? summary.adCount : promotions.length;
-  const channelCount = analysis.channels.length || Object.keys(platformCountsFromPromotions(promotions)).length;
-  const sellingPointCount = analysis.coreSellingPoints.length;
-  const audienceCount = analysis.targetAudiences.length;
 
   if (!promotions.length && !hasPromotionSummary(summary)) {
-    return `<div class="promotion-module"><div class="promotion-head"><div><h2>广告和推广</h2><p class="muted">暂未获取广告或官网推广素材。</p></div></div><div class="promotion-empty">当前没有足够素材生成广告推广分析。重新采集广告源后，此处会展示覆盖渠道、目标人群、传播信息和策略总结。</div></div>`;
+    return `<div class="promotion-module"><h2>广告和推广</h2><div class="promotion-empty">当前没有足够素材生成广告推广分析。重新采集广告源后，此处会展示覆盖渠道、目标人群、传播信息和策略总结。</div></div>`;
   }
 
   return `<div class="promotion-module">
-    <div class="promotion-head">
-      <div>
-        <h2>广告和推广</h2>
-        <p class="muted">DeepSeek 广告和推广综合分析</p>
-        <p class="muted">基于 ${escapeHtml(String(adCount))} 条官网、Google、Meta 等可用推广素材生成 · 模型：${escapeHtml(model)}</p>
-      </div>
-      <div class="promotion-stats">
-        <div class="promotion-stat"><strong>${escapeHtml(String(adCount))}</strong><span>推广素材</span></div>
-        <div class="promotion-stat"><strong>${escapeHtml(String(channelCount))}</strong><span>覆盖渠道</span></div>
-        <div class="promotion-stat"><strong>${escapeHtml(String(sellingPointCount))}</strong><span>核心卖点</span></div>
-        <div class="promotion-stat"><strong>${escapeHtml(String(audienceCount))}</strong><span>重点人群</span></div>
-      </div>
-    </div>
+    <h2>广告和推广</h2>
     <div>
       <h3 class="promotion-title">推广概览</h3>
       <div class="promotion-overview-grid">${analysis.overview.map(renderPromotionOverviewCard).join("")}</div>
@@ -907,6 +1141,7 @@ function renderPromotionSection(promotions: PromotionItem[], summary: Record<str
       <h3 class="promotion-title">策略总结</h3>
       <div class="promotion-strategy-grid">${analysis.strategySummary.map(renderPromotionStrategyCard).join("")}</div>
     </div>
+    ${renderPromotionPainPointFit(painPointSummary)}
     ${renderPromotionMaterials(promotions)}
   </div>`;
 }
@@ -923,9 +1158,70 @@ function renderPromotionStrategyCard(item: PromotionStrategy) {
   return `<div class="promotion-strategy"><strong>${escapeHtml(item.title)}</strong><ul>${item.points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul></div>`;
 }
 
+function renderPromotionPainPointFit(summary: Record<string, unknown> | null) {
+  const painPoints = normalizePromotionPainPoints(summary);
+  if (!painPoints.length) return "";
+
+  return `<div>
+    <h3 class="promotion-title">用户痛点与广告命中</h3>
+    <div class="promotion-painpoint-grid">${painPoints.map(renderPromotionPainPoint).join("")}</div>
+  </div>`;
+}
+
+function renderPromotionPainPoint(item: PromotionPainPoint) {
+  const fitClass = item.adFit === "命中" ? "hit" : item.adFit === "部分命中" ? "partial" : item.adFit === "未命中" ? "miss" : "unknown";
+  const tags = [
+    `评论证据 ${item.reviewIndexes.length} 条`,
+    item.matchedAdIndexes.length ? `广告证据 ${item.matchedAdIndexes.length} 条` : "无直接广告证据",
+    item.severity ? `严重度：${item.severity}` : "",
+    item.confidence ? `置信度：${item.confidence}` : ""
+  ].filter(Boolean);
+  return `<article class="promotion-painpoint">
+    <div class="promotion-painpoint-head"><strong>${escapeHtml(item.title)}</strong><span class="severity ${item.severity === "高" ? "bad" : item.severity === "低" ? "good" : "medium"}">严重度：${escapeHtml(item.severity || "未标注")}</span></div>
+    <p>${escapeHtml(item.summary)}</p>
+    <div class="promotion-painpoint-fit"><span class="ad-fit ${fitClass}">广告${escapeHtml(item.adFit)}</span><p>${escapeHtml(item.adFitReason)}</p></div>
+    <div class="promotion-tags">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>
+    ${item.quote ? `<p class="promotion-painpoint-quote">评论摘录：“${escapeHtml(item.quote)}”</p>` : ""}
+  </article>`;
+}
+
+function normalizePromotionPainPoints(summary: Record<string, unknown> | null) {
+  if (!Array.isArray(summary?.painPoints)) return [];
+  return summary.painPoints
+    .map((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      const item = value as Record<string, unknown>;
+      const adFit = textValue(item.adFit);
+      if (!["命中", "部分命中", "未命中", "无法判断"].includes(adFit)) return null;
+      const title = textValue(item.title).slice(0, 32);
+      const summaryText = textValue(item.summary).slice(0, 140);
+      const reviewIndexes = reportNumberList(item.reviewIndexes, 8);
+      const adFitReason = textValue(item.adFitReason).slice(0, 140);
+      if (!title || !summaryText || !reviewIndexes.length || !adFitReason) return null;
+      return {
+        title,
+        summary: summaryText,
+        reviewIndexes,
+        quote: textValue(item.quote).slice(0, 180),
+        severity: textValue(item.severity).slice(0, 8),
+        confidence: textValue(item.confidence).slice(0, 8),
+        adFit: adFit as PromotionPainPoint["adFit"],
+        adFitReason,
+        matchedAdIndexes: reportNumberList(item.matchedAdIndexes, 8)
+      };
+    })
+    .filter((item): item is PromotionPainPoint => Boolean(item))
+    .slice(0, 6);
+}
+
+function reportNumberList(value: unknown, limit: number) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0).slice(0, limit);
+}
+
 function renderPromotionMaterials(promotions: PromotionItem[]) {
   if (!promotions.length) return "";
-  return `<details class="promotion-detail"><summary><span>详细广告素材</span><span class="badge">${promotions.length} 条</span></summary><div class="promotion-detail-body"><div class="promotion-material-grid">${promotions
+  return `<details class="promotion-detail"><summary><span>详细广告素材</span></summary><div class="promotion-detail-body"><div class="promotion-material-grid">${promotions
     .map(renderPromotionMaterial)
     .join("")}</div></div></details>`;
 }
@@ -951,7 +1247,7 @@ function normalizePromotionAnalysis(promotions: PromotionItem[], summary: Record
   const channels = promotionArray(summary?.channels, 6, 24);
   const targetAudiences = promotionArray(summary?.targetAudiences, 6, 32);
   const coreSellingPoints = promotionArray(summary?.coreSellingPoints, 8, 32);
-  const overview = promotionObjectArray(summary?.overview, normalizePromotionOverviewItem, 5).filter((item) => !isPromotionDirectionCard(item.title));
+  const overview = promotionObjectArray(summary?.overview, normalizePromotionOverviewItem, 5).filter((item) => isPromotionOverviewCard(item.title));
   const communicationSignals = promotionObjectArray(summary?.communicationSignals, normalizePromotionSignal, 3).filter((item) => !isPromotionDirectionCard(item.title));
   const strategySummary = promotionObjectArray(summary?.strategySummary, normalizePromotionStrategy, 3);
   const sourceCoverage = textValue(summary?.sourceCoverage) || formatPlatformCounts(summary?.platformCounts) || formatPlatformCounts(platformCounts);
@@ -969,12 +1265,10 @@ function normalizePromotionAnalysis(promotions: PromotionItem[], summary: Record
     coreSellingPoints: normalizedSellingPoints,
     overview: overview.length
 	      ? overview
-	      : [
-	          { title: "覆盖来源", summary: sourceCoverage || "暂未判断", details: normalizedChannels.slice(0, 4) },
-	          { title: "面向人群", summary: targetAudience || "暂未判断", details: normalizedAudiences.slice(0, 4) },
-	          { title: "使用场景", summary: useCases || "暂未判断", details: splitChineseList(useCases).slice(0, 4) },
-	          { title: "核心卖点", summary: sellingPoints || "暂未判断", details: normalizedSellingPoints.slice(0, 4) }
-	        ],
+      : [
+          { title: "覆盖来源", summary: sourceCoverage || "暂未判断", details: normalizedChannels.slice(0, 4) },
+          { title: "核心卖点", summary: sellingPoints || "暂未判断", details: normalizedSellingPoints.slice(0, 4) }
+        ],
     communicationSignals: communicationSignals.length
       ? communicationSignals
       : buildFallbackPromotionSignals(promotions, normalizedSellingPoints, useCases),
@@ -1016,6 +1310,10 @@ function buildFallbackPromotionSignals(promotions: PromotionItem[], sellingPoint
 
 function isPromotionDirectionCard(title: string) {
   return title.trim() === "推广方向";
+}
+
+function isPromotionOverviewCard(title: string) {
+  return ["覆盖来源", "核心卖点"].includes(title.trim());
 }
 
 function buildFallbackPromotionStrategies(channels: string[], audiences: string[], sellingPoints: string[], direction: string) {

@@ -12,7 +12,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ta
 
   const task = await prisma.researchTask.findUniqueOrThrow({
     where: { id: taskId },
-    include: { sources: true, appProfile: true, pricingPlans: true, reviews: true, promotions: true, analyses: true }
+    include: { sources: true, appProfile: true, pricingPlans: true, reviews: true, promotions: true, communityItems: true, analyses: true }
   });
   await prisma.report.upsert({
     where: { taskId },
@@ -29,4 +29,3 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ta
     error: pricingError ? JSON.parse(pricingError.resultJson) : null
   });
 }
-

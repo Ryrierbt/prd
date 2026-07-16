@@ -8,6 +8,8 @@
 - 采集官网介绍、功能和官方推广页面
 - 采集官网定价页，按套餐展示月付价格和年付价格
 - 使用 GitHub 依赖 `git@github.com:Ryrierbt/app-store-scraper.git` 采集 Apple App Store 应用信息、评分分布与评论
+- 使用 `google-play-scraper` 采集 Google Play 应用信息、评分分布与评论
+- 使用 `youtube-comment-downloader` 采集 YouTube 公开视频评论，生成社区热议分析
 - App Store 评论端由独立 `app-store-scraper` 包统一处理，带浏览器请求头、多区域和每区域 3 次重试
 - 支持通过本地 Playwright 浏览器采集 Facebook Ads Library 公开广告素材
 - 支持通过 `google-ads-transparency-mcp` 采集 Google Ads Transparency Center 公开广告素材
@@ -47,10 +49,10 @@ npm run dev -- -H 127.0.0.1 -p 3000
 DATABASE_URL="file:./dev.db"
 ```
 
-如果 `prisma/dev.db` 不存在，先用已有迁移创建它：
+如果 `prisma/dev.db` 不存在，使用当前 Schema 初始化它：
 
 ```bash
-sqlite3 prisma/dev.db ".read prisma/migrations/20260714000000_init/migration.sql"
+npx prisma db push
 npx prisma generate
 ```
 
@@ -68,7 +70,7 @@ npx prisma generate
 4. 报告中的定价表分别展示月付价格与年付价格，均保留官网的原始币种和计价单位。
 5. 某个公开来源不可访问或无评论时，任务会标记为“部分完成”，报告会保留真实失败说明，不会用推测内容补齐。
 
-## App Store 采集
+## 应用商店评论采集
 
 App Store 应用搜索、详情、评分分布和最近评论统一通过 GitHub 依赖 `app-store-scraper` 处理：
 
@@ -99,6 +101,35 @@ APP_STORE_REVIEW_PROXY_URL=""
 # 示例：
 # APP_STORE_REVIEW_PROXY_URL="https://apppan.pangjiong.com/api/reviews?search={search}&country={country}"
 ```
+
+Google Play 评论通过 `google-play-scraper` 抓取美国区最新评价。每个平台都最多抓取 200 条最新评论，并以相同的高质量规则筛选最多 60 条写入报告；两端都成功时，DeepSeek 会同时分析最多 120 条评论。可在 `.env` 中调整 Google Play 地区与语言：
+
+```env
+GOOGLE_PLAY_COUNTRY="us"
+GOOGLE_PLAY_LANGUAGE="en"
+```
+
+Apple App Store 或 Google Play 任一评论端失败时，报告仍会保留另一端的评论与分析，并显示失败原因；任务页会出现“重新采集评论”按钮，仅重试缺失的平台。
+
+## 社区热议
+
+社区热议会使用 [youtube-comment-downloader](https://github.com/egbertbouman/youtube-comment-downloader) 搜索与抓取 YouTube 公开视频评论。查询会同时覆盖产品评价、替代品、竞品对比和补充关键词，不只搜索 App 品牌名。
+
+先安装本地 Python 依赖：
+
+```bash
+python3 -m pip install --target .python-packages -r requirements-community.txt
+```
+
+YouTube 不需要 API Key。可在 `.env` 中调整视频数量和每个视频的评论数量：
+
+```env
+COMMUNITY_DISCUSSIONS_PYTHON="python3"
+COMMUNITY_YOUTUBE_VIDEO_LIMIT="6"
+COMMUNITY_YOUTUBE_COMMENTS_PER_VIDEO="8"
+```
+
+DeepSeek 会将 YouTube 社区内容分别归纳为热点 Top 5、寻找替代品原因、竞品推荐流向、视频测评与评论区真实反馈差距、产品机会；结论必须绑定具体视频或评论证据，不会为了凑数量输出结果。
 
 ## DeepSeek 评价总结
 
