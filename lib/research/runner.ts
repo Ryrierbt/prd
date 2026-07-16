@@ -68,7 +68,7 @@ export async function runFailedSourcesRetry(taskId: string) {
   const retryWebsite = failedTypes.has("WEBSITE");
   const retryPricing = failedTypes.has("PRICING");
   const retryAppStore = ["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"].some((type) => failedTypes.has(type));
-  const retryPromotion = ["PROMOTION", "META_AD_LIBRARY", "GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"].some((type) => failedTypes.has(type));
+  const retryPromotion = ["PROMOTION", "FACEBOOK_ADS_LIBRARY", "GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"].some((type) => failedTypes.has(type));
 
   if (retryWebsite) {
     await prisma.source.deleteMany({ where: { taskId, sourceType: "WEBSITE" } });
@@ -97,7 +97,7 @@ export async function runFailedSourcesRetry(taskId: string) {
     await prisma.source.deleteMany({
       where: {
         taskId,
-        sourceType: { in: ["PROMOTION", "META_AD_LIBRARY", "GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"] }
+        sourceType: { in: ["PROMOTION", "FACEBOOK_ADS_LIBRARY", "GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"] }
       }
     });
     await updateTask(taskId, taskStatuses.collectingPromotion, 74, null);

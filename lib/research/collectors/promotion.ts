@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { getMetaAdLibraryAccessToken } from "@/lib/settings";
 import { recordSource } from "@/lib/research/collectors/sources";
 import { fetchText } from "@/lib/research/utils/fetcher";
 import { getOriginUrl, joinUrl, parseHtmlPage, splitSentences, truncate, uniqueValues } from "@/lib/research/utils/text";
@@ -73,30 +72,14 @@ export async function collectPromotion(taskId: string, websiteUrl: string | null
     }
   }
 
-  const metaAds = await collectMetaAdLibraryAds(taskId, appName, origin || websiteUrl || "https://www.facebook.com/ads/library/");
-  items.push(...metaAds);
+  const facebookAds = await collectFacebookAdsLibraryAds(taskId, appName, origin || websiteUrl || "https://www.facebook.com/ads/library/");
+  items.push(...facebookAds);
 
   const googleAds = await collectGoogleAdsTransparencyAds(taskId, appName, origin);
   items.push(...googleAds);
 
   return items;
 }
-
-type MetaAd = {
-  id?: string;
-  page_id?: string;
-  page_name?: string;
-  ad_creative_body?: string;
-  ad_creative_bodies?: string[];
-  ad_creative_link_title?: string;
-  ad_creative_link_titles?: string[];
-  ad_creative_link_description?: string;
-  ad_creative_link_descriptions?: string[];
-  ad_delivery_start_time?: string;
-  ad_snapshot_url?: string;
-  publisher_platforms?: string[];
-  ad_reached_countries?: string[];
-};
 
 type GoogleAdsTransparencyResult = {
   advertiser?: {
@@ -105,6 +88,33 @@ type GoogleAdsTransparencyResult = {
     ad_count?: number;
   } | null;
   ads?: GoogleTransparencyAd[];
+};
+
+type FacebookAdsScraperResult = {
+  source?: string;
+  country?: string;
+  ads?: FacebookAdsScraperAd[];
+};
+
+type FacebookAdsScraperAd = {
+  ad_archive_id?: string | number | null;
+  page_name?: string | null;
+  page_profile_uri?: string | null;
+  publisher_platform?: string[];
+  snapshot?: {
+    body?: {
+      text?: string;
+    };
+    cta_text?: string;
+    images?: Array<{ original_image_url?: string }>;
+  };
+  start_date?: string | number | null;
+  end_date?: string | number | null;
+  categories?: string[];
+  ad_snapshot_url?: string | null;
+  destination_url?: string | null;
+  link_title?: string;
+  link_description?: string;
 };
 
 type GoogleTransparencyAd = {
@@ -128,70 +138,84 @@ type GoogleTransparencyAd = {
   };
 };
 
-async function collectMetaAdLibraryAds(taskId: string, appName: string, origin: string) {
-  const accessToken = await getMetaAdLibraryAccessToken();
-  const sourceUrl = "https://www.facebook.com/ads/library/api";
-  if (!accessToken) {
-    await recordSource({
-      taskId,
-      sourceType: "META_AD_LIBRARY",
-      sourceName: "Meta Ad Library 广告",
-      url: sourceUrl,
-      status: "PENDING",
-      errorMessage: "未配置 Meta Ad Library Access Token。"
-    });
-    return [];
-  }
-
-  const country = (process.env.META_AD_LIBRARY_COUNTRY || "US").toUpperCase();
-  const apiVersion = process.env.META_AD_LIBRARY_API_VERSION || "v22.0";
-  const params = new URLSearchParams({
-    access_token: accessToken,
-    search_terms: appName,
-    ad_reached_countries: country,
-    ad_active_status: "ALL",
-    fields:
-      "id,page_id,page_name,ad_creative_body,ad_creative_bodies,ad_creative_link_title,ad_creative_link_titles,ad_creative_link_description,ad_creative_link_descriptions,ad_delivery_start_time,ad_snapshot_url,publisher_platforms,ad_reached_countries",
-    limit: "25"
-  });
+async function collectFacebookAdsLibraryAds(taskId: string, appName: string, origin: string) {
+  const sourceUrl = "https://www.facebook.com/ads/library/";
+  const country = (process.env.FACEBOOK_ADS_SCRAPER_COUNTRY || "US").toUpperCase();
+  const rawLimit = normalizeLimit(process.env.FACEBOOK_ADS_RAW_LIMIT, 30);
+  const finalLimit = normalizeLimit(process.env.FACEBOOK_ADS_SCRAPER_LIMIT, 20);
+  const scrollRounds = normalizeLimit(process.env.FACEBOOK_ADS_SCROLL_ROUNDS, 30);
+  const scriptPath = path.join(process.cwd(), "scripts", "facebook_ads_library_scraper.py");
+  const pythonCommand = process.env.FACEBOOK_ADS_SCRAPER_PYTHON || "python3";
+  const browserProfile = process.env.FACEBOOK_ADS_BROWSER_PROFILE || "";
+  const headful = process.env.FACEBOOK_ADS_BROWSER_HEADFUL === "1" || process.env.FACEBOOK_ADS_BROWSER_HEADFUL?.toLowerCase() === "true";
+  const args = [
+    scriptPath,
+    "--app-name",
+    appName,
+    "--country",
+    country,
+    "--limit",
+    String(rawLimit),
+    "--scroll-rounds",
+    String(scrollRounds)
+  ];
+  if (browserProfile) args.push("--browser-profile", browserProfile);
+  if (headful) args.push("--headful");
 
   try {
-    const response = await fetch(`https://graph.facebook.com/${apiVersion}/ads_archive?${params.toString()}`, {
-      signal: AbortSignal.timeout(20_000)
+    const { stdout } = await execFileAsync(pythonCommand, args, {
+      timeout: 180_000,
+      maxBuffer: 1024 * 1024
     });
-    const payload = (await response.json()) as { data?: MetaAd[]; error?: { message?: string } };
-    if (!response.ok || payload.error) {
-      throw new Error(payload.error?.message || `Meta Ad Library 请求失败（${response.status}）`);
-    }
-
-    const ads = payload.data ?? [];
+    const payload = JSON.parse(stdout) as FacebookAdsScraperResult;
+    const ads = payload.ads ?? [];
+    const matchedAds = filterFacebookAdsForTarget(ads, appName, origin);
+    const filteredAds = await enrichFacebookAdsDetails(
+      pythonCommand,
+      scriptPath,
+      matchedAds.slice(0, finalLimit),
+      country,
+      browserProfile,
+      headful
+    );
     await recordSource({
       taskId,
-      sourceType: "META_AD_LIBRARY",
-      sourceName: "Meta Ad Library 广告",
+      sourceType: "FACEBOOK_ADS_LIBRARY",
+      sourceName: "Facebook Ads Library Scraper 广告",
       url: sourceUrl,
       status: "SUCCESS",
-      rawContent: JSON.stringify(ads),
+      rawContent: JSON.stringify({
+        ...payload,
+        filter: {
+          fetchedCount: ads.length,
+          matchedCount: matchedAds.length,
+          keptCount: filteredAds.length,
+          rawLimit,
+          finalLimit,
+          appName,
+          domain: hostnameFromUrl(origin)
+        },
+        ads: filteredAds
+      }),
       fetchedAt: new Date()
     });
 
     const items = [];
-    for (const ad of ads) {
-      const title = firstText(ad.ad_creative_link_titles, ad.ad_creative_link_title) || ad.page_name || "Meta 广告";
-      const body = firstText(ad.ad_creative_bodies, ad.ad_creative_body);
-      const description = firstText(ad.ad_creative_link_descriptions, ad.ad_creative_link_description);
-      const content = [body, description].filter(Boolean).join(" ") || "暂未获取广告文案";
+    for (const ad of filteredAds) {
+      const title = ad.link_title || ad.page_name || "Facebook 广告";
+      const content = facebookAdContent(ad) || "暂未获取广告文案";
+      const sourceUrl = normalizeAdUrl(ad.destination_url || ad.ad_snapshot_url || facebookAdLibraryUrl(ad.ad_archive_id) || ad.page_profile_uri || "", origin);
       const item = await prisma.promotionItem.create({
         data: {
           taskId,
-          platform: "Meta Ad Library",
-          title,
+          platform: "Facebook Ads Library",
+          title: truncate(title, 200),
           content: truncate(content, 1000),
-          targetAudience: ad.ad_reached_countries?.join("、") || country,
-          useCase: ad.publisher_platforms?.join("、") || "Meta 广告投放",
+          targetAudience: ad.categories?.join("、") || payload.country || country,
+          useCase: ad.publisher_platform?.join("、") || "Facebook/Instagram 广告投放",
           sellingPoints: extractSellingPoints(content).join("、") || "暂未结构化提取",
-          sourceUrl: ad.ad_snapshot_url || origin,
-          publishedAt: ad.ad_delivery_start_time ? new Date(ad.ad_delivery_start_time) : null,
+          sourceUrl,
+          publishedAt: parseAdDate(ad.start_date),
           fetchedAt: new Date()
         }
       });
@@ -202,13 +226,46 @@ async function collectMetaAdLibraryAds(taskId: string, appName: string, origin: 
   } catch (error) {
     await recordSource({
       taskId,
-      sourceType: "META_AD_LIBRARY",
-      sourceName: "Meta Ad Library 广告",
+      sourceType: "FACEBOOK_ADS_LIBRARY",
+      sourceName: "Facebook Ads Library Scraper 广告",
       url: sourceUrl,
       status: "FAILED",
-      errorMessage: error instanceof Error ? error.message : "Meta Ad Library 采集失败"
+      errorMessage: getProcessErrorMessage(error, "Facebook Ads Library Scraper 采集失败")
     });
     return [];
+  }
+}
+
+async function enrichFacebookAdsDetails(
+  pythonCommand: string,
+  scriptPath: string,
+  ads: FacebookAdsScraperAd[],
+  country: string,
+  browserProfile: string,
+  headful: boolean
+) {
+  if (!ads.length) return ads;
+  const args = [
+    scriptPath,
+    "--country",
+    country,
+    "--limit",
+    String(ads.length),
+    "--ads-json",
+    JSON.stringify(ads)
+  ];
+  if (browserProfile) args.push("--browser-profile", browserProfile);
+  if (headful) args.push("--headful");
+
+  try {
+    const { stdout } = await execFileAsync(pythonCommand, args, {
+      timeout: 300_000,
+      maxBuffer: 1024 * 1024
+    });
+    const payload = JSON.parse(stdout) as FacebookAdsScraperResult;
+    return payload.ads?.length ? payload.ads : ads;
+  } catch {
+    return ads;
   }
 }
 
@@ -312,10 +369,6 @@ async function collectGoogleAdsTransparencyAds(taskId: string, appName: string, 
   }
 }
 
-function firstText(values?: string[], value?: string) {
-  return values?.find(Boolean) || value || "";
-}
-
 function googleAdContent(ad: GoogleTransparencyAd) {
   return [
     ad.content?.local_image_url ? `本地图片：${ad.content.local_image_url}` : "",
@@ -333,12 +386,122 @@ function googleAdContent(ad: GoogleTransparencyAd) {
     .join(" ");
 }
 
-function getProcessErrorMessage(error: unknown) {
+function facebookAdContent(ad: FacebookAdsScraperAd) {
+  return [
+    ad.snapshot?.body?.text,
+    ad.link_title,
+    ad.link_description,
+    ad.snapshot?.cta_text ? `CTA：${ad.snapshot.cta_text}` : "",
+    ad.destination_url ? `目标链接：${ad.destination_url}` : "",
+    ...(ad.snapshot?.images?.map((image) => (image.original_image_url ? `图片素材：${image.original_image_url}` : "")) ?? [])
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function filterFacebookAdsForTarget(ads: FacebookAdsScraperAd[], appName: string, origin: string) {
+  const domain = hostnameFromUrl(origin);
+  const rootDomain = domain ? rootDomainFromHost(domain) : "";
+  const appTokens = nameTokens(appName);
+  const primaryTokens = appTokens.filter((token) => !genericNameTokens.has(token));
+  const matchTokens = primaryTokens.length ? primaryTokens : appTokens;
+
+  const matched = ads.filter((ad) => facebookAdMatchesTarget(ad, matchTokens, rootDomain));
+  return matched.length ? matched : [];
+}
+
+function facebookAdMatchesTarget(ad: FacebookAdsScraperAd, appTokens: string[], rootDomain: string) {
+  const pageTokens = nameTokens(ad.page_name || "");
+  if (appTokens.length && tokensMatch(pageTokens, appTokens)) return true;
+
+  const searchableText = [
+    ad.page_name,
+    ad.page_profile_uri,
+    ad.destination_url,
+    ad.ad_snapshot_url,
+    ad.link_title,
+    ad.link_description,
+    ad.snapshot?.body?.text,
+    ...(ad.snapshot?.images?.map((image) => image.original_image_url) ?? [])
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (rootDomain && textContainsRootDomain(searchableText, rootDomain)) return true;
+  return false;
+}
+
+function tokensMatch(pageTokens: string[], appTokens: string[]) {
+  if (!pageTokens.length || !appTokens.length) return false;
+  const pageSet = new Set(pageTokens);
+  if (appTokens.every((token) => pageSet.has(token))) return true;
+  const distinctiveTokens = appTokens.filter((token) => token.length >= 4);
+  return distinctiveTokens.length > 0 && distinctiveTokens.every((token) => pageSet.has(token));
+}
+
+const genericNameTokens = new Set(["ai", "app", "inc", "llc", "co", "com", "the"]);
+
+function nameTokens(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .split(/[^a-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+}
+
+function hostnameFromUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname.replace(/^www\./, "").toLowerCase();
+    return ignoredFacebookHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`)) ? "" : hostname;
+  } catch {
+    return "";
+  }
+}
+
+const ignoredFacebookHosts = ["facebook.com", "fbcdn.net", "instagram.com", "threads.net"];
+
+function rootDomainFromHost(hostname: string) {
+  const parts = hostname.split(".").filter(Boolean);
+  if (parts.length <= 2) return hostname;
+  return parts.slice(-2).join(".");
+}
+
+function textContainsRootDomain(text: string, rootDomain: string) {
+  if (!text || !rootDomain) return false;
+  const lower = text.toLowerCase();
+  if (lower.includes(rootDomain)) return true;
+  const rootName = rootDomain.split(".")[0];
+  if (rootName.length < 4) return false;
+  return new RegExp(`(^|[^a-z0-9])${escapeRegExp(rootName)}([^a-z0-9]|$)`, "i").test(lower);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function facebookAdLibraryUrl(value: string | number | null | undefined) {
+  if (!value) return "";
+  return `https://www.facebook.com/ads/library/?id=${encodeURIComponent(String(value))}`;
+}
+
+function parseAdDate(value: string | number | null | undefined) {
+  if (!value) return null;
+  if (typeof value === "number") {
+    const time = value > 10_000_000_000 ? value : value * 1000;
+    const date = new Date(time);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function getProcessErrorMessage(error: unknown, fallback = "采集失败") {
   if (error instanceof Error) {
     const stderr = "stderr" in error && typeof error.stderr === "string" ? error.stderr.trim() : "";
     return stderr || error.message;
   }
-  return "Google Ads Transparency 采集失败";
+  return fallback;
 }
 
 function normalizeLimit(value: string | undefined, fallback: number) {

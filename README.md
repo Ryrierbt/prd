@@ -9,7 +9,7 @@
 - 采集官网定价页，按套餐展示月付价格和年付价格
 - 使用 GitHub 依赖 `git@github.com:Ryrierbt/app-store-scraper.git` 采集 Apple App Store 应用信息、评分分布与评论
 - App Store 评论端由独立 `app-store-scraper` 包统一处理，带浏览器请求头、多区域和每区域 3 次重试
-- 支持通过 Meta Ad Library API 采集公开广告素材
+- 支持通过本地 Playwright 浏览器采集 Facebook Ads Library 公开广告素材
 - 支持通过 `google-ads-transparency-mcp` 采集 Google Ads Transparency Center 公开广告素材
 - 使用 DeepSeek 综合官网、App Store 与广告素材生成可点击功能标签，并展开官方能力、用户好评和风险问题
 - 使用 DeepSeek 将目标客户群体拆成行业、细分行业、组织类型、部门、岗位、场景、痛点、购买动机和证据来源
@@ -76,20 +76,20 @@ App Store 应用搜索、详情、评分分布和最近评论统一通过 GitHub
 "app-store-scraper": "git+ssh://git@github.com/Ryrierbt/app-store-scraper.git"
 ```
 
-该独立包内部合并了 `@perttu/app-store-scraper` 的搜索/详情/评分能力，以及 Apple Customer Reviews RSS 的多区域评论抓取逻辑。如果首页填写了 App Store 链接，系统会优先提取链接中的 `id`，避免只靠应用名搜索选错结果。
+该独立包内部合并了 `@perttu/app-store-scraper` 的搜索/详情/评分能力，以及 Apple Customer Reviews RSS 的评论抓取逻辑。如果首页填写了 App Store 链接，系统会优先提取链接中的 `id`，避免只靠应用名搜索选错结果。
 
-最近评论使用 Apple 公开 Customer Reviews RSS 链路，并显式携带浏览器请求头。Apple 公开评论接口经常按国家/地区返回不同结果，系统默认按以下顺序尝试：
+最近评论使用 Apple 公开 Customer Reviews RSS 链路，并显式携带浏览器请求头。当前项目默认只抓取美国区评论：
 
 ```env
-APP_STORE_REVIEW_COUNTRIES="us,gb,ca,au,de,fr,it,es,nl,se"
+APP_STORE_REVIEW_COUNTRIES="us"
 ```
 
-默认限制为主流欧美市场，其中 `au` 作为英语主流市场保留。每个区域最多重试 3 次，某个区域成功返回评论后立即使用该区域结果；如果所有区域都为空，来源会记录失败原因。
+如果需要恢复多区域，可手动把 `.env` 改成逗号分隔的国家代码。当前默认兜底也是 `us`，不会在未配置时自动尝试其他国家。
 
-默认只读取最近评论第 1 页；如需额外读取更多页，可在 `.env` 中配置，最大 3 页：
+默认读取最近评论最多 3 页，请求最多 200 条最新评论，并从中筛选 60 条信息量更高的评价写入报告。页数可在 `.env` 中配置，最大 3 页：
 
 ```env
-APP_STORE_REVIEW_PAGES="1"
+APP_STORE_REVIEW_PAGES="3"
 ```
 
 如果 Apple RSS 与开源库在当前网络下都返回空，也可以配置一个兼容 `{search}` / `{country}` / `{id}` 参数的评论代理作为最后兜底。默认不配置，系统不会访问第三方代理：
@@ -104,7 +104,7 @@ APP_STORE_REVIEW_PROXY_URL=""
 
 在首页的 `DeepSeek API` 区域输入并保存 API Key。密钥仅保存在本地 SQLite 数据库中，页面和报告不会显示或返回其内容。
 
-配置完成后，新建任务或重试已有任务时，系统会翻译并压缩报告中的基础信息和定价核心权益，并在成功采集 App Store 评论后对最多 30 条最新评论生成“主要好评、主要问题、产品机会”总结。报告页的“更新 AI 总结”只处理已有数据，不会重新采集。未配置 Key、没有可用评论或模型请求失败时，任务仍会正常完成，报告保留原始采集内容。
+配置完成后，新建任务或重试已有任务时，系统会翻译并压缩报告中的基础信息和定价核心权益，并在成功采集 App Store 评论后对筛选出的高质量评论生成“主要好评、主要问题、产品机会”总结。报告页的“更新 AI 总结”只处理已有数据，不会重新采集。未配置 Key、没有可用评论或模型请求失败时，任务仍会正常完成，报告保留原始采集内容。
 
 功能分析会在官网、App Store 和广告/推广素材采集后运行。DeepSeek 会生成最多 8 个功能标签；报告中的每个标签可点击展开，查看官方声称能力、证据来源、App Store 评价中的正向反馈和负向问题。未配置 DeepSeek 或请求失败时，报告会回退展示原始功能关键词。
 
@@ -112,9 +112,23 @@ APP_STORE_REVIEW_PROXY_URL=""
 
 ## Meta 广告来源
 
-首页的 `Meta Ad Library` 区域可保存 Meta Developer Access Token。任务会按 App 名称检索 Meta 广告资料库，默认投放国家为 `US`；可用环境变量 `META_AD_LIBRARY_COUNTRY` 修改。未配置 Token 时，Meta 广告来源会显示为待配置，不影响其他来源的完成状态。
+任务会通过本地 Playwright 浏览器打开 Facebook Ads Library 公共页面，按 App 名称进行关键词全站搜索，只采集正在投放中的 Facebook/Instagram 广告。默认投放国家为 `US`，可用环境变量 `FACEBOOK_ADS_SCRAPER_COUNTRY` 修改。采集后会按广告 `page_name` 和官网主域名过滤噪声，只把更像目标 App 相关的素材写入报告。如果当前网络或会话被 Facebook 返回验证挑战，来源会记录失败原因，不再回退到普通 HTTP 请求头模式。
 
-实现参考 Facebook Research 的 [Ad-Library-API-Script-Repository](https://github.com/facebookresearch/Ad-Library-API-Script-Repository)，使用其 `ads_archive` 查询参数与字段。Meta 的数据可用范围和权限会随 Token、地区及平台政策变化。
+默认先抓取最多 `30` 条原始广告，再过滤并写入最多 `20` 条目标 App 相关广告；如果过滤后不足 20 条，不会用噪声广告硬凑。过滤完成后，系统只会对保留下来的广告打开详情页补充正文，避免对大量无关广告逐条补详情导致采集过慢。
+
+实现适配 [domini-67/facebook-ads-library-scraper](https://github.com/domini-67/facebook-ads-library-scraper.git) 的标准化输出结构，入口脚本为 `scripts/facebook_ads_library_scraper.py`。如果你本机浏览器已经通过 Facebook 验证，可以通过 `FACEBOOK_ADS_BROWSER_PROFILE` 复用该浏览器 profile。
+
+可选环境变量：
+
+```bash
+FACEBOOK_ADS_SCRAPER_PYTHON="python3"
+FACEBOOK_ADS_SCRAPER_COUNTRY="US"
+FACEBOOK_ADS_RAW_LIMIT="30"
+FACEBOOK_ADS_SCRAPER_LIMIT="20"
+FACEBOOK_ADS_SCROLL_ROUNDS="30"
+FACEBOOK_ADS_BROWSER_PROFILE=""
+FACEBOOK_ADS_BROWSER_HEADFUL=""
+```
 
 ## Google 广告来源
 

@@ -1,6 +1,5 @@
 import { TaskForm } from "@/components/task-form";
 import { DeepSeekSettings } from "@/components/deepseek-settings";
-import { MetaAdLibrarySettings } from "@/components/meta-ad-library-settings";
 import { SiteShell } from "@/components/site-shell";
 
 export default function HomePage() {
@@ -19,7 +18,6 @@ export default function HomePage() {
         </section>
         <aside className="home-configs">
           <DeepSeekSettings />
-          <MetaAdLibrarySettings />
         </aside>
       </div>
       <TaskForm />

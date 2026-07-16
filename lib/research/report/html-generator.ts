@@ -1,5 +1,4 @@
 import type { Prisma } from "@prisma/client";
-import { extractKeywords } from "@/lib/research/analysis/reviews";
 import { escapeHtml } from "@/lib/research/utils/text";
 
 type ReportTask = Prisma.ResearchTaskGetPayload<{
@@ -18,7 +17,6 @@ export function generateResearchReport(task: ReportTask) {
   const successfulSources = task.sources.filter((source) => source.status === "SUCCESS");
   const failedSources = task.sources.filter((source) => source.status === "FAILED");
   const completeness = Math.round((successfulSources.length / Math.max(task.sources.length, 1)) * 100);
-  const keywords = extractKeywords(task.reviews.map((review) => `${review.title ?? ""} ${review.content}`));
   const reviewTotal = task.reviews.length;
   const appStoreSummary = readAnalysis(task, "APP_STORE_SUMMARY");
   const appStoreRatings = readAnalysis(task, "APP_STORE_RATINGS");
@@ -105,10 +103,6 @@ export function generateResearchReport(task: ReportTask) {
     .customer-detail-item:last-child{border-bottom:0}
     .customer-detail-item strong{display:block;color:#1e3a8a}
     .customer-detail-item span{display:block;min-width:0;overflow-wrap:anywhere;word-break:break-word}
-    .customer-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-    .customer-summary-card{border:1px solid #d8e2f3;border-radius:8px;background:#f8fbff;padding:12px}
-    .customer-summary-card strong{display:block;color:#0f172a;margin-bottom:6px}
-    .industry-share{font-size:22px;font-weight:800;color:#2563eb;margin:4px 0}
     .muted{color:#64748b}
     .source a{color:#2563eb;word-break:break-all}
     .warning{border-color:#ead28a;background:#fff9df}
@@ -117,34 +111,14 @@ export function generateResearchReport(task: ReportTask) {
     .review-head h2{margin-bottom:4px}
     .review-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
     .review-filter{padding:7px 11px;border:1px solid #d8e2f3;border-radius:8px;background:#f8fbff;color:#334155;font-size:13px;white-space:nowrap}
-    .review-notice{padding:10px 12px;border:1px solid #bfdbfe;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:13px}
     .review-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
     .review-metric-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:13px;min-width:0;box-shadow:0 1px 3px rgba(15,23,42,.04)}
     .review-metric-card span{display:block;margin-bottom:7px;color:#64748b;font-size:12px}
     .review-metric-card strong{display:block;color:#0f172a;font-size:26px;line-height:1.1}
     .review-metric-card small{display:block;margin-top:6px;color:#64748b;font-size:12px;overflow-wrap:anywhere}
     .stars{color:#f59e0b;letter-spacing:1px}
-    .review-summary-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:16px}
-    .review-summary-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
-    .review-summary-head h3{margin:0}
-    .review-summary-overview{display:grid;grid-template-columns:44px 1fr;gap:12px;align-items:center;margin-bottom:14px;padding:14px;border:1px solid #bfdbfe;border-radius:8px;background:#f8fbff}
-    .review-summary-mark{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-weight:800}
-    .review-summary-overview strong{display:block;margin-bottom:4px;color:#0f172a}
-    .review-summary-overview p{margin:0;color:#334155;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
-    .review-summary-layout{display:grid;grid-template-columns:1fr minmax(0,1.75fr);gap:14px}
-    .review-summary-side{display:grid;gap:12px}
-    .review-summary-panel{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0}
-    .review-summary-panel.good{border-color:#bbf7d0;background:#f7fffb}
-    .review-summary-panel.bad{border-color:#fecaca;background:#fff8f8}
-    .review-summary-panel.opportunity{border-color:#bfdbfe;background:#f8fbff}
-    .review-summary-panel h4{margin:0 0 9px;color:#0f172a;font-size:15px}
-    .review-summary-panel p{margin:0;color:#334155;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
-    .review-summary-keywords{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid #d8e2f3;border-radius:8px;background:#f8fbff}
-    .review-summary-keywords strong{white-space:nowrap;color:#1e3a8a;font-size:13px}
-    .review-summary-keywords div{display:flex;flex-wrap:wrap;gap:6px}
-    .review-grid{display:grid;grid-template-columns:minmax(260px,36%) 1fr;gap:14px}
-    .sentiment-card,.topic-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:16px;min-width:0}
-    .topic-card{overflow-x:auto}
+    .review-grid{display:grid;grid-template-columns:minmax(260px,36%) 1fr;gap:14px;align-items:start}
+    .sentiment-card,.review-ai-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:16px;min-width:0}
     .sentiment-layout{display:grid;grid-template-columns:150px 1fr;align-items:center;gap:18px}
     .sentiment-donut{width:150px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;position:relative;background:conic-gradient(#22c55e 0 var(--positive),#cbd5e1 var(--positive) var(--neutral),#ef4444 var(--neutral) var(--negative),#f59e0b var(--negative) 100%)}
     .sentiment-donut::after{content:"";position:absolute;inset:26px;border-radius:50%;background:#fff}
@@ -154,21 +128,15 @@ export function generateResearchReport(task: ReportTask) {
     .sentiment-legend div{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:8px;color:#334155;font-size:13px}
     .legend-dot{width:10px;height:10px;border-radius:999px;background:#cbd5e1}
     .legend-dot.positive{background:#22c55e}.legend-dot.negative{background:#ef4444}.legend-dot.mixed{background:#f59e0b}
-    .topic-table{width:100%;min-width:620px;font-size:13px}
-    .topic-table th,.topic-table td{padding:9px 8px}
-    .topic-table td{overflow-wrap:anywhere}
-    .topic-bar{width:86px;height:7px;border-radius:999px;background:#e5edf8;overflow:hidden}
-    .topic-bar span{display:block;height:100%;border-radius:999px;background:#2563eb}
-    .count-good{color:#15803d}.count-bad{color:#dc2626}
-    .insight-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-    .insight-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;overflow:hidden;min-width:0}
-    .insight-card h3{margin:0;padding:13px 14px;border-bottom:1px solid #e5eefc;background:#f8fbff;font-size:16px}
-    .insight-card.good h3{background:#ecfdf5;color:#047857}
-    .insight-card.bad h3{background:#fff1f2;color:#dc2626}
-    .insight-card.opportunity h3{background:#f5f3ff;color:#6d28d9}
-    .insight-list{display:grid;gap:0;margin:0;padding:0;list-style:none}
-    .insight-list li{display:grid;grid-template-columns:24px 1fr auto;gap:9px;padding:12px 14px;border-bottom:1px solid #eef4ff;min-width:0}
-    .insight-list li:last-child{border-bottom:0}
+    .review-ai-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .review-ai-head h3{margin:0}
+    .review-ai-overview{display:grid;grid-template-columns:38px 1fr;gap:10px;align-items:center;margin:0 0 12px;padding:11px;border:1px solid #bfdbfe;border-radius:8px;background:#f8fbff}
+    .review-ai-mark{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-weight:800}
+    .review-ai-overview strong{display:block;margin-bottom:3px;color:#0f172a;font-size:13px}
+    .review-ai-overview p{margin:0;color:#475569;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+    .review-ai-list{display:grid;gap:0;margin:0;padding:0;list-style:none;border-top:1px solid #e5eefc}
+    .review-ai-list li{display:grid;grid-template-columns:24px 1fr auto;gap:9px;padding:11px 0;border-bottom:1px solid #eef4ff;min-width:0}
+    .review-ai-list li:last-child{border-bottom:0}
     .insight-rank{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#eff6ff;color:#2563eb;font-size:12px;font-weight:700}
     .insight-main{min-width:0}
     .insight-main strong{display:block;color:#0f172a;font-size:13px}
@@ -205,14 +173,6 @@ export function generateResearchReport(task: ReportTask) {
     .promotion-signal{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0}
     .promotion-signal strong{display:block;margin-bottom:5px;color:#0f172a}
     .promotion-signal p{margin:0 0 9px;color:#334155;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
-    .promotion-audience-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .promotion-audience{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0}
-    .promotion-audience-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
-    .promotion-audience-head strong{color:#0f172a;overflow-wrap:anywhere}
-    .promotion-audience dl{display:grid;gap:6px;margin:0}
-    .promotion-audience div{display:grid;grid-template-columns:82px minmax(0,1fr);gap:8px;color:#334155;font-size:13px}
-    .promotion-audience dt{color:#1e3a8a;font-weight:700}
-    .promotion-audience dd{margin:0;overflow-wrap:anywhere}
     .promotion-strategy-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
     .promotion-strategy{position:relative;border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:15px;min-height:120px;overflow:hidden}
     .promotion-strategy strong{display:block;margin-bottom:8px;color:#0f172a}
@@ -233,9 +193,9 @@ export function generateResearchReport(task: ReportTask) {
     .promotion-material p{margin:0;color:#334155;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
     .promotion-material-image{display:block;width:100%;max-height:160px;object-fit:contain;border:1px solid #d8e2f3;border-radius:8px;background:#fff}
     .promotion-material-source{margin-top:auto;font-size:13px}
-    @media(max-width:1100px){.review-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.insight-grid,.review-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:1100px){.review-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.review-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:1100px){.promotion-head{display:block}.promotion-stats{min-width:0;margin-top:12px}.promotion-overview-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.promotion-signal-grid,.promotion-strategy-grid,.promotion-material-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:860px){.layout{display:block}nav{position:static;height:auto}.grid,.info-grid,.review-metrics,.promotion-stats{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:18px}.feature-row,.feature-feedback,.customer-cards,.customer-detail-grid,.customer-summary-grid,.review-grid,.review-summary-layout,.insight-grid,.review-card-grid,.promotion-overview-grid,.promotion-signal-grid,.promotion-audience-grid,.promotion-strategy-grid,.promotion-material-grid{grid-template-columns:1fr}.feature-label{padding-bottom:0}.feature-item summary{align-items:flex-start;flex-wrap:wrap}.feature-item summary::after{width:100%;margin-left:0}.customer-card-title,.review-head,.review-tabs-head{display:block}.customer-badges,.review-actions{margin-top:8px;justify-content:flex-start}.sentiment-layout{grid-template-columns:1fr}.sentiment-donut{margin:auto}.review-summary-keywords{display:block}.review-summary-keywords div{margin-top:8px}}
+    @media(max-width:860px){.layout{display:block}nav{position:static;height:auto}.grid,.info-grid,.review-metrics,.promotion-stats{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:18px}.feature-row,.feature-feedback,.customer-cards,.customer-detail-grid,.review-grid,.review-card-grid,.promotion-overview-grid,.promotion-signal-grid,.promotion-strategy-grid,.promotion-material-grid{grid-template-columns:1fr}.feature-label{padding-bottom:0}.feature-item summary{align-items:flex-start;flex-wrap:wrap}.feature-item summary::after{width:100%;margin-left:0}.customer-card-title,.review-head,.review-tabs-head{display:block}.customer-badges,.review-actions{margin-top:8px;justify-content:flex-start}.sentiment-layout{grid-template-columns:1fr}.sentiment-donut{margin:auto}}
   </style>
 </head>
 <body>
@@ -295,7 +255,7 @@ export function generateResearchReport(task: ReportTask) {
       </section>
 
       <section id="reviews">
-        ${renderReviewAnalysisSection(task, appStoreSummary, appStoreRatings, deepSeekReviewSummary, keywords)}
+        ${renderReviewAnalysisSection(task, appStoreSummary, appStoreRatings, deepSeekReviewSummary)}
       </section>
 
       <section id="promotion">
@@ -373,19 +333,9 @@ type ReviewStats = {
   featureRequestRate: number;
 };
 
-type ReviewTopic = {
-  name: string;
-  categories: string[];
-  keywords: string[];
-  count: number;
-  coverage: number;
-  positive: number;
-  negative: number;
-  tags: string[];
-};
-
 type ReviewInsight = {
   title: string;
+  summary: string;
   count: number;
   percent: number;
   quote: string;
@@ -393,50 +343,20 @@ type ReviewInsight = {
   badgeKind: "good" | "bad" | "medium";
 };
 
-type ReviewTopicDefinition = {
-  name: string;
-  categories: string[];
-  keywords: string[];
-  tags: string[];
-};
-
-const reviewTopicDefinitions: ReviewTopicDefinition[] = [
-  { name: "会议总结", categories: ["功能反馈", "用户诉求"], keywords: ["summary", "summaries", "summarize", "recap", "notes", "action item"], tags: ["摘要质量", "行动项", "会后纪要"] },
-  { name: "转写准确率", categories: ["准确性问题"], keywords: ["accurate", "accuracy", "transcribe", "transcription", "wrong", "mistake"], tags: ["转写准确率", "识别错误", "文本质量"] },
-  { name: "多人识别", categories: ["准确性问题"], keywords: ["speaker", "speakers", "identify", "recognition", "diarization"], tags: ["说话人识别", "多人会议", "角色区分"] },
-  { name: "录音记录", categories: ["功能反馈", "用户诉求"], keywords: ["record", "recording", "audio", "listen", "voice"], tags: ["会议录音", "音频记录", "实时捕捉"] },
-  { name: "搜索回溯", categories: ["功能反馈", "用户诉求"], keywords: ["search", "find", "history", "lookup"], tags: ["全文搜索", "历史记录", "知识回溯"] },
-  { name: "导出分享", categories: ["功能反馈", "用户诉求"], keywords: ["export", "share", "download", "pdf", "doc", "copy"], tags: ["导出", "分享", "文件格式"] },
-  { name: "日历同步", categories: ["功能反馈", "稳定性问题", "用户诉求"], keywords: ["calendar", "sync", "zoom", "meet", "teams"], tags: ["日历集成", "会议同步", "视频会议"] },
-  { name: "工作流集成", categories: ["功能反馈", "用户诉求"], keywords: ["crm", "salesforce", "hubspot", "slack", "notion", "zapier"], tags: ["CRM", "协作工具", "自动化"] },
-  { name: "崩溃错误", categories: ["稳定性问题"], keywords: ["crash", "bug", "freeze", "stop", "error"], tags: ["崩溃", "Bug", "异常中断"] },
-  { name: "性能速度", categories: ["稳定性问题", "用户体验问题"], keywords: ["slow", "delay", "lag", "loading", "speed"], tags: ["加载速度", "延迟", "响应性能"] },
-  { name: "价格价值", categories: ["价格反馈"], keywords: ["price", "expensive", "cost", "paid", "subscription"], tags: ["价格", "订阅", "性价比"] },
-  { name: "取消扣费", categories: ["价格反馈", "用户体验问题"], keywords: ["cancel", "refund", "charge", "billing", "trial"], tags: ["取消订阅", "扣费", "退款"] },
-  { name: "免费额度", categories: ["价格反馈", "用户诉求"], keywords: ["free", "trial", "limit", "minutes", "quota"], tags: ["免费试用", "额度限制", "分钟数"] },
-  { name: "易用上手", categories: ["用户体验问题"], keywords: ["easy", "intuitive", "confusing", "difficult", "hard"], tags: ["学习成本", "操作流程", "界面体验"] },
-  { name: "客服支持", categories: ["用户体验问题", "其他"], keywords: ["support", "service", "help", "response", "contact"], tags: ["客服响应", "问题处理", "帮助支持"] }
-];
-
 function renderReviewAnalysisSection(
   task: ReportTask,
   appStoreSummary: Record<string, unknown> | null,
   appStoreRatings: Record<string, unknown> | null,
-  deepSeekReviewSummary: Record<string, unknown> | null,
-  keywords: Array<{ keyword: string; count: number }>
+  deepSeekReviewSummary: Record<string, unknown> | null
 ) {
   const stats = buildReviewStats(task.reviews, appStoreSummary);
-  const topics = buildReviewTopics(task.reviews);
-  const positiveInsights = buildPositiveInsights(task.reviews, topics);
-  const problemInsights = buildProblemInsights(task.reviews, topics);
-  const opportunityInsights = buildOpportunityInsights(task.reviews, topics);
+  const deepSeekInsights = reviewInsights(deepSeekReviewSummary, stats.total);
   const positiveReviews = representativeReviews(task.reviews, "positive");
   const negativeReviews = representativeReviews(task.reviews, "negative");
   const requestReviews = representativeReviews(task.reviews, "request");
   const countries = inferReviewCountries(task.reviews);
   const sourceText = countries.length ? `来自 ${countries.length} 个国家/地区` : "国家/地区暂未识别";
   const ratingBreakdown = renderRatingBreakdown(appStoreRatings);
-  const summarySections = reviewSummarySections(deepSeekReviewSummary, stats, topics);
   const model = typeof deepSeekReviewSummary?.model === "string" ? deepSeekReviewSummary.model : "系统规则 + DeepSeek";
   const donutPositive = stats.total ? stats.positiveRate : 0;
   const donutNeutral = stats.total ? stats.positiveRate + stats.neutralRate : 100;
@@ -446,14 +366,13 @@ function renderReviewAnalysisSection(
     <div class="review-head">
       <div>
         <h2>用户评价分析</h2>
-        <p class="muted">分析范围：App Store 最近 ${escapeHtml(String(stats.total))} 条评论${stats.ratingCount !== "暂未获取" ? `；公开评分数 ${escapeHtml(stats.ratingCount)}` : ""}</p>
+        <p class="muted">分析范围：从 App Store 最新评论中筛选的 ${escapeHtml(String(stats.total))} 条高质量样本${stats.ratingCount !== "暂未获取" ? `；公开评分数 ${escapeHtml(stats.ratingCount)}` : ""}</p>
       </div>
       <div class="review-actions">
         <span class="review-filter">国家：全部国家</span>
         <span class="review-filter">时间范围：最近采集</span>
       </div>
     </div>
-    <div class="review-notice">一级评论可能涉及多个主题，因此主题提及占比相加可能超过 100%。</div>
     <div class="review-metrics">
       <div class="review-metric-card"><span>分析评论数</span><strong>${escapeHtml(String(stats.total))}</strong><small>${escapeHtml(sourceText)}</small></div>
       <div class="review-metric-card"><span>平均评分</span><strong>${escapeHtml(stats.averageRating)}<small class="stars">${escapeHtml(starText(stats.averageRating))}</small></strong><small>${ratingBreakdown || "基于可用评分样本"}</small></div>
@@ -462,7 +381,6 @@ function renderReviewAnalysisSection(
       <div class="review-metric-card"><span>负面评论占比</span><strong>${stats.negativeRate}%</strong><small>${stats.negative} 条</small></div>
       <div class="review-metric-card"><span>包含功能诉求</span><strong>${stats.featureRequests}</strong><small>${stats.featureRequestRate}% 的评论</small></div>
     </div>
-    ${renderReviewAISummary(summarySections, model, stats, positiveInsights, problemInsights, opportunityInsights, keywords)}
     <div class="review-grid">
       <div class="sentiment-card">
         <h3>情感分布</h3>
@@ -476,15 +394,7 @@ function renderReviewAnalysisSection(
           </div>
         </div>
       </div>
-      <div class="topic-card">
-        <h3>主题关注度</h3>
-        ${renderReviewTopicTable(topics)}
-      </div>
-    </div>
-    <div class="insight-grid">
-      ${renderInsightCard("用户认可的亮点 Top 5", positiveInsights, "good")}
-      ${renderInsightCard("用户集中抱怨的问题 Top 5", problemInsights, "bad")}
-      ${renderInsightCard("用户诉求与产品机会 Top 5", opportunityInsights, "opportunity")}
+      ${renderReviewAIInsights(deepSeekReviewSummary, model, stats, deepSeekInsights)}
     </div>
     <div>
       <div class="review-tabs-head">
@@ -530,219 +440,78 @@ function buildReviewStats(reviews: ReviewItem[], appStoreSummary: Record<string,
   };
 }
 
-function buildReviewTopics(reviews: ReviewItem[]) {
-  return reviewTopicDefinitions
-    .map((definition) => {
-      const matched = reviews.filter((review) => reviewMatchesTopic(review, definition));
-      return {
-        name: definition.name,
-        categories: definition.categories,
-        keywords: definition.keywords,
-        count: matched.length,
-        coverage: percent(matched.length, reviews.length),
-        positive: matched.filter((review) => reviewSentiment(review) === "positive").length,
-        negative: matched.filter((review) => reviewSentiment(review) === "negative").length,
-        tags: definition.tags
-      };
-    })
-    .filter((topic) => topic.count > 0)
-    .sort((left, right) => right.count - left.count);
-}
-
-function renderReviewTopicTable(topics: ReviewTopic[]) {
-  if (!topics.length) return "<p class=\"muted\">暂未获取评价主题。</p>";
-
-  return `<table class="topic-table"><thead><tr><th>主题</th><th>提及评论数</th><th>覆盖率</th><th>正面数</th><th>负面数</th><th>主要二级标签</th></tr></thead><tbody>${topics
-    .slice(0, 8)
-    .map(
-      (topic) => `<tr><td>${escapeHtml(topic.name)}</td><td>${topic.count}</td><td><div class="topic-bar"><span style="width:${Math.min(topic.coverage, 100)}%"></span></div>${topic.coverage}%</td><td class="count-good">${topic.positive}</td><td class="count-bad">${topic.negative}</td><td>${topic.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</td></tr>`
-    )
-    .join("")}</tbody></table>`;
-}
-
-function renderReviewAISummary(
-  sections: ReviewSummarySections,
+function renderReviewAIInsights(
+  summary: Record<string, unknown> | null,
   model: string,
   stats: ReviewStats,
-  positiveInsights: ReviewInsight[],
-  problemInsights: ReviewInsight[],
-  opportunityInsights: ReviewInsight[],
-  keywords: Array<{ keyword: string; count: number }>
+  insights: ReviewInsight[]
 ) {
-  const positiveDominant = stats.positive >= stats.negative;
-  const positivePanel = buildSummaryPanelContent(sections.positive, positiveInsights);
-  const problemPanel = buildSummaryPanelContent(sections.problem, problemInsights);
-  const opportunityPanel = buildSummaryPanelContent(sections.opportunity, opportunityInsights);
-  const primary = positiveDominant
-    ? { title: "主要好评", kind: "good" as const, content: positivePanel }
-    : { title: "主要问题", kind: "bad" as const, content: problemPanel };
-  const secondary = positiveDominant
-    ? { title: "主要问题", kind: "bad" as const, content: problemPanel }
-    : { title: "主要好评", kind: "good" as const, content: positivePanel };
-  const keywordTags = keywords.slice(0, 8).map((item) => `<span class="tag">${escapeHtml(item.keyword)} ${item.count}</span>`).join("");
-
-  return `<div class="review-summary-card">
-    <div class="review-summary-head"><h3>AI 综合总结</h3><span class="badge">由 ${escapeHtml(model)} 生成</span></div>
-    <div class="review-summary-overview"><span class="review-summary-mark">AI</span><div><strong>总结概览</strong><p>${escapeHtml(sections.overview)}</p></div></div>
-    <div class="review-summary-layout">
-      <div class="review-summary-side">
-        ${renderReviewSummaryMiniPanel(secondary.title, secondary.content, secondary.kind)}
-        ${renderReviewSummaryMiniPanel("产品机会", opportunityPanel, "opportunity")}
-      </div>
-      ${renderReviewSummaryMainPanel(primary.title, primary.content, primary.kind)}
-    </div>
-    ${keywordTags ? `<div class="review-summary-keywords"><strong>高频关键词</strong><div>${keywordTags}</div></div>` : ""}
+  const overview = textValue(summary?.overview).slice(0, 180) || `当前共分析 ${stats.total} 条评论，正面占比 ${stats.positiveRate}%，负面占比 ${stats.negativeRate}%。`;
+  return `<div class="review-ai-card">
+    <div class="review-ai-head"><h3>AI 评论洞察</h3><span class="badge">由 ${escapeHtml(model)} 生成</span></div>
+    <div class="review-ai-overview"><span class="review-ai-mark">AI</span><div><strong>总结概览</strong><p>${escapeHtml(overview)}</p></div></div>
+    ${insights.length ? `<ol class="review-ai-list">${insights
+      .map(
+        (insight, index) =>
+          `<li><span class="insight-rank">${index + 1}</span><span class="insight-main"><strong>${escapeHtml(insight.title)}</strong><span>${escapeHtml(insight.summary)}${insight.quote ? ` · “${escapeHtml(insight.quote)}”` : ""}${insight.count ? ` · ${insight.count} 条证据（${insight.percent}%）` : ""}</span></span><span class="severity ${insight.badgeKind}">${escapeHtml(insight.badge)}</span></li>`
+      )
+      .join("")}</ol>` : `<p class="muted">暂无可由 AI 支撑的评论洞察。</p>`}
   </div>`;
 }
 
-function renderReviewSummaryMiniPanel(title: string, content: SummaryPanelContent, kind: "good" | "bad" | "opportunity") {
-  return `<div class="review-summary-panel ${kind}"><h4>${escapeHtml(title)}</h4><p>${escapeHtml(content.summary)}</p></div>`;
+function reviewInsights(summary: Record<string, unknown> | null, totalReviews: number) {
+  const unified = normalizeReviewInsights(summary?.insights, totalReviews, "洞察", "medium", true, 8);
+  if (unified.length) return unified;
+
+  return [
+    ...normalizeReviewInsights(summary?.positiveInsights, totalReviews, "正面", "good", false, 5),
+    ...normalizeReviewInsights(summary?.problemInsights, totalReviews, "问题", "bad", false, 5),
+    ...normalizeReviewInsights(summary?.opportunityInsights, totalReviews, "机会", "medium", false, 5)
+  ].slice(0, 8);
 }
 
-function renderReviewSummaryMainPanel(title: string, content: SummaryPanelContent, kind: "good" | "bad") {
-  return `<div class="review-summary-panel ${kind}"><h4>${escapeHtml(title)}</h4><p>${escapeHtml(content.summary)}</p></div>`;
-}
-
-type ReviewSummarySections = {
-  overview: string;
-  positive: string;
-  problem: string;
-  opportunity: string;
-};
-
-type SummaryPanelContent = {
-  summary: string;
-};
-
-function buildSummaryPanelContent(text: string, insights: ReviewInsight[]): SummaryPanelContent {
-  const summary = text || (insights[0] ? `${insights[0].title}。${insights[0].quote}` : "当前样本暂未形成明确结论。");
-  return { summary };
-}
-
-function splitReviewSummarySections(content: string) {
-  const jsonSections = parseReviewSummaryJson(content);
-  if (jsonSections) return jsonSections;
-
-  const normalized = content.replace(/\s+/g, " ").trim();
-  const positive = extractSummarySection(normalized, ["主要好评", "好评"], ["主要问题", "产品机会"]);
-  const problem = extractSummarySection(normalized, ["主要问题", "问题"], ["主要好评", "产品机会"]);
-  const opportunity = extractSummarySection(normalized, ["产品机会", "机会"], ["主要好评", "主要问题"]);
-  const firstSectionIndex = findFirstSummarySectionIndex(normalized);
-  const overview = (firstSectionIndex > 0 ? normalized.slice(0, firstSectionIndex) : normalized).trim().slice(0, 180);
-
-  return {
-    overview: overview || "基于当前 App Store 评价样本，以下按主要好评、主要问题和产品机会拆分总结。",
-    positive,
-    problem,
-    opportunity
-  };
-}
-
-function parseReviewSummaryJson(content: string) {
-  try {
-    const value = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, "").trim()) as Record<string, unknown>;
-    const overview = textValue(value.overview || value.summary).slice(0, 220);
-    const positive = textValue(value.positive || value.mainPraise || value.good).slice(0, 220);
-    const problem = textValue(value.problem || value.mainProblems || value.bad).slice(0, 220);
-    const opportunity = textValue(value.opportunity || value.productOpportunities).slice(0, 220);
-    if (!overview && !positive && !problem && !opportunity) return null;
-    return {
-      overview: overview || "基于当前 App Store 评价样本，以下按主要好评、主要问题和产品机会拆分总结。",
-      positive,
-      problem,
-      opportunity
-    };
-  } catch {
-    return null;
-  }
-}
-
-function findFirstSummarySectionIndex(content: string) {
-  const indexes = ["主要好评", "主要问题", "产品机会", "好评", "问题", "机会"]
-    .map((label) => content.search(summaryLabelPattern(label)))
-    .filter((index) => index >= 0);
-  return indexes.length ? Math.min(...indexes) : -1;
-}
-
-function extractSummarySection(content: string, labels: string[], nextLabels: string[]) {
-  for (const label of labels) {
-    const marker = summaryLabelPattern(label);
-    const match = content.match(marker);
-    if (!match || match.index === undefined) continue;
-    const start = match.index + match[0].length;
-    const rest = content.slice(start);
-    const nextIndexes = nextLabels
-      .flatMap((nextLabel) => {
-        const nextMatch = rest.match(summaryLabelPattern(nextLabel));
-        return nextMatch?.index === undefined ? [] : [nextMatch.index];
-      })
-      .sort((left, right) => left - right);
-    return rest.slice(0, nextIndexes[0] ?? undefined).trim().slice(0, 220);
-  }
-  return "";
-}
-
-function summaryLabelPattern(label: string) {
-  return new RegExp(`(?:\\*\\*)?${label}(?:\\*\\*)?[：:]`);
-}
-
-function buildPositiveInsights(reviews: ReviewItem[], topics: ReviewTopic[]) {
-  const insights = topics
-    .filter((topic) => topic.positive > 0)
-    .map((topic) => {
-      const sample = reviews.find((review) => reviewSentiment(review) === "positive" && reviewMatchesTopic(review, topic));
+function normalizeReviewInsights(
+  value: unknown,
+  totalReviews: number,
+  fallbackBadge: string,
+  fallbackBadgeKind: ReviewInsight["badgeKind"],
+  useItemKind: boolean,
+  limit: number
+) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+      const record = item as Record<string, unknown>;
+      const title = textValue(record.title).slice(0, 60);
+      const summary = textValue(record.summary).slice(0, 140);
+      const quote = textValue(record.quote).slice(0, 180);
+      const reviewIndexes = Array.isArray(record.reviewIndexes)
+        ? Array.from(new Set(record.reviewIndexes.map((index) => Number(index)).filter((index) => Number.isInteger(index) && index > 0)))
+        : [];
+      const confidence = textValue(record.confidence);
+      const severity = textValue(record.severity);
+      const badgeKind = useItemKind ? reviewInsightKind(textValue(record.kind)) : fallbackBadgeKind;
+      const badge = badgeKind === "bad" ? severity || confidence || fallbackBadge : confidence || severity || fallbackBadge;
+      if (!title || (!summary && !quote)) return null;
       return {
-        title: positiveInsightTitle(topic.name),
-        count: topic.positive,
-        percent: percent(topic.positive, reviews.length),
-        quote: reviewSnippet(sample),
-        badge: "正面",
-        badgeKind: "good" as const
+        title,
+        summary,
+        count: reviewIndexes.length,
+        percent: percent(reviewIndexes.length, totalReviews),
+        quote,
+        badge,
+        badgeKind
       };
-    });
-  return insights.length ? insights.slice(0, 5) : fallbackInsights("暂无明显正向亮点", "当前样本中正面评价不足，建议扩大采集范围。", "正面", "good");
+    })
+    .filter((item): item is ReviewInsight => Boolean(item))
+    .slice(0, limit);
 }
 
-function buildProblemInsights(reviews: ReviewItem[], topics: ReviewTopic[]) {
-  const insights = topics
-    .filter((topic) => topic.negative > 0)
-    .map((topic) => {
-      const sample = reviews.find((review) => reviewSentiment(review) === "negative" && reviewMatchesTopic(review, topic));
-      const problemPercent = percent(topic.negative, reviews.length);
-      return {
-        title: problemInsightTitle(topic.name),
-        count: topic.negative,
-        percent: problemPercent,
-        quote: reviewSnippet(sample),
-        badge: problemPercent >= 20 ? "严重" : problemPercent >= 10 ? "中等" : "低频",
-        badgeKind: problemPercent >= 20 ? ("bad" as const) : ("medium" as const)
-      };
-    });
-  return insights.length ? insights.slice(0, 5) : fallbackInsights("暂无集中负面问题", "当前样本中未出现高频差评主题。", "低频", "medium");
-}
-
-function buildOpportunityInsights(reviews: ReviewItem[], topics: ReviewTopic[]) {
-  const requestTopics = topics.filter((topic) => topic.categories.some((category) => category === "功能反馈" || category === "用户诉求"));
-  const insights = requestTopics.map((topic) => {
-    const sample = reviews.find((review) => reviewMatchesTopic(review, topic));
-    return {
-      title: opportunityTitle(topic.name),
-      count: topic.count,
-      percent: topic.coverage,
-      quote: reviewSnippet(sample),
-      badge: "机会",
-      badgeKind: "medium" as const
-    };
-  });
-  return insights.length ? insights.slice(0, 5) : fallbackInsights("暂无明确功能诉求", "当前评论没有提取到 wish、please、export 等诉求信号。", "机会", "medium");
-}
-
-function renderInsightCard(title: string, insights: ReviewInsight[], kind: "good" | "bad" | "opportunity") {
-  return `<div class="insight-card ${kind}"><h3>${escapeHtml(title)}</h3><ol class="insight-list">${insights
-    .map(
-      (insight, index) => `<li><span class="insight-rank">${index + 1}</span><span class="insight-main"><strong>${escapeHtml(insight.title)}</strong><span>${insight.count} 条评论（${insight.percent}%） · “${escapeHtml(insight.quote)}”</span></span><span class="severity ${insight.badgeKind}">${escapeHtml(insight.badge)}</span></li>`
-    )
-    .join("")}</ol></div>`;
+function reviewInsightKind(value: string): ReviewInsight["badgeKind"] {
+  if (value === "positive") return "good";
+  if (value === "problem") return "bad";
+  return "medium";
 }
 
 function renderReviewPanel(type: string, reviews: ReviewItem[], active: boolean) {
@@ -773,35 +542,6 @@ function representativeReviews(reviews: ReviewItem[], type: "positive" | "negati
     .slice(0, 4);
 }
 
-function reviewSummarySections(summary: Record<string, unknown> | null, stats: ReviewStats, topics: ReviewTopic[]): ReviewSummarySections {
-  const structured = {
-    overview: textValue(summary?.overview).slice(0, 220),
-    positive: textValue(summary?.positive).slice(0, 220),
-    problem: textValue(summary?.problem).slice(0, 220),
-    opportunity: textValue(summary?.opportunity).slice(0, 220)
-  };
-  if (structured.overview || structured.positive || structured.problem || structured.opportunity) {
-    return {
-      overview: structured.overview || "基于当前 App Store 评价样本，以下按主要好评、主要问题和产品机会拆分总结。",
-      positive: structured.positive,
-      problem: structured.problem,
-      opportunity: structured.opportunity
-    };
-  }
-
-  if (typeof summary?.content === "string" && summary.content.trim()) {
-    return splitReviewSummarySections(summary.content);
-  }
-
-  const topTopic = topics[0]?.name ?? "暂未形成集中主题";
-  return {
-    overview: `当前共分析 ${stats.total} 条评论，正面评论占比 ${stats.positiveRate}%，负面评论占比 ${stats.negativeRate}%。用户最常提及的主题是「${topTopic}」。`,
-    positive: "",
-    problem: "",
-    opportunity: ""
-  };
-}
-
 function renderRatingBreakdown(ratings: Record<string, unknown> | null) {
   const histogram = ratings?.histogram && typeof ratings.histogram === "object" ? (ratings.histogram as Record<string, number>) : null;
   if (!histogram) return "";
@@ -819,13 +559,6 @@ function reviewCategories(review: ReviewItem) {
 function hasAnyCategory(review: ReviewItem, categories: string[]) {
   const values = reviewCategories(review);
   return categories.some((category) => values.includes(category));
-}
-
-function reviewMatchesTopic(review: ReviewItem, topic: Pick<ReviewTopicDefinition, "categories" | "keywords">) {
-  if (!hasAnyCategory(review, topic.categories)) return false;
-  if (!topic.keywords.length) return true;
-  const text = `${review.title ?? ""} ${review.content}`.toLowerCase();
-  return topic.keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 function reviewSentiment(review: ReviewItem) {
@@ -865,11 +598,6 @@ function starText(value: string | number | null | undefined) {
   return "★".repeat(full) + "☆".repeat(5 - full);
 }
 
-function reviewSnippet(review?: ReviewItem) {
-  if (!review) return "暂无代表性原文";
-  return trimText(review.title || review.content, 48);
-}
-
 function trimText(value: string, limit: number) {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
@@ -877,74 +605,6 @@ function trimText(value: string, limit: number) {
 
 function percent(count: number, total: number) {
   return total > 0 ? Math.round((count / total) * 100) : 0;
-}
-
-function positiveInsightTitle(topic: string) {
-  const titles: Record<string, string> = {
-    会议总结: "会议总结能力被认可",
-    转写准确率: "转写准确率获得正反馈",
-    多人识别: "多人识别效果被认可",
-    录音记录: "录音记录体验稳定",
-    搜索回溯: "搜索回溯帮助复盘",
-    导出分享: "导出分享提升协作效率",
-    日历同步: "会议同步流程较顺畅",
-    工作流集成: "工作流集成带来效率提升",
-    崩溃错误: "稳定性表现获得正反馈",
-    性能速度: "响应速度体验较好",
-    价格价值: "价格价值被部分用户接受",
-    取消扣费: "订阅管理体验被认可",
-    免费额度: "免费额度降低试用门槛",
-    易用上手: "操作体验较容易上手",
-    客服支持: "客服支持获得正反馈"
-  };
-  return titles[topic] ?? `${topic}获得正向反馈`;
-}
-
-function problemInsightTitle(topic: string) {
-  const titles: Record<string, string> = {
-    会议总结: "会议总结质量不稳定",
-    转写准确率: "转写准确性仍有争议",
-    多人识别: "多人识别容易出错",
-    录音记录: "录音记录存在中断风险",
-    搜索回溯: "搜索回溯能力不足",
-    导出分享: "导出分享流程受阻",
-    日历同步: "日历或会议同步失败",
-    工作流集成: "工作流集成覆盖不足",
-    崩溃错误: "崩溃、Bug 或异常中断",
-    性能速度: "加载慢或响应延迟",
-    价格价值: "价格和订阅价值争议",
-    取消扣费: "取消订阅或扣费争议",
-    免费额度: "免费额度或试用限制",
-    易用上手: "使用流程不够顺滑",
-    客服支持: "客服响应和问题处理不足"
-  };
-  return titles[topic] ?? `${topic}存在负面反馈`;
-}
-
-function opportunityTitle(topic: string) {
-  const titles: Record<string, string> = {
-    会议总结: "强化摘要结构和行动项",
-    转写准确率: "提升复杂场景转写准确率",
-    多人识别: "补强多人识别和角色区分",
-    录音记录: "优化录音稳定性和异常恢复",
-    搜索回溯: "增强跨会议搜索与回溯",
-    导出分享: "扩展导出格式和分享链路",
-    日历同步: "提升日历和会议平台同步可靠性",
-    工作流集成: "补齐 CRM 与协作工具集成",
-    崩溃错误: "优先修复高频稳定性问题",
-    性能速度: "优化加载速度和实时响应",
-    价格价值: "重塑套餐价值表达",
-    取消扣费: "降低订阅取消和退款摩擦",
-    免费额度: "优化试用额度和转化路径",
-    易用上手: "简化新用户上手路径",
-    客服支持: "提升问题响应和支持闭环"
-  };
-  if (titles[topic]) return titles[topic];
-  return `${topic}可转化为产品机会`;
-}
-
-function fallbackInsights(title: string, quote: string, badge: string, badgeKind: "good" | "bad" | "medium") {
-  return [{ title, count: 0, percent: 0, quote, badge, badgeKind }];
 }
 
 function renderDeepSeekFeatureAnalysis(summary: Record<string, unknown> | null, fallbackFeatures?: string | null) {
@@ -1063,11 +723,11 @@ function renderCustomerSegments(summary: Record<string, unknown> | null, fallbac
     ["potential", "潜在客户群体"]
   ];
 
-  return `<div class="customer-module"><div class="customer-head"><h3>目标客户群体</h3><span class="badge">查看全部</span></div><div class="customer-tabs">${groups
-    .map(([type, label], index) => `<button class="customer-tab${index === 0 ? " active" : ""}" type="button" data-customer-tab="${escapeHtml(type)}">${escapeHtml(label)}</button>`)
-    .join("")}</div><p class="feature-meta">基于 ${escapeHtml(String(sourceCount))} 个公开来源、${escapeHtml(String(reviewCount))} 条 App Store 评价和 ${escapeHtml(String(promotionCount))} 条广告/推广素材生成 · 模型：${escapeHtml(model)}</p>${groups
-    .map(([type], index) => renderCustomerCardsPanel(type, prioritizedCustomerSegments(segments.filter((segment) => segment.segmentType === type)).slice(0, 3), index === 0))
-    .join("")}${renderIndustryDistribution(segments)}</div>`;
+	  return `<div class="customer-module"><div class="customer-head"><h3>目标客户群体</h3><span class="badge">查看全部</span></div><div class="customer-tabs">${groups
+	    .map(([type, label], index) => `<button class="customer-tab${index === 0 ? " active" : ""}" type="button" data-customer-tab="${escapeHtml(type)}">${escapeHtml(label)}</button>`)
+	    .join("")}</div><p class="feature-meta">基于 ${escapeHtml(String(sourceCount))} 个公开来源、${escapeHtml(String(reviewCount))} 条 App Store 评价和 ${escapeHtml(String(promotionCount))} 条广告/推广素材生成 · 模型：${escapeHtml(model)}</p>${groups
+	    .map(([type], index) => renderCustomerCardsPanel(type, prioritizedCustomerSegments(segments.filter((segment) => segment.segmentType === type)).slice(0, 3), index === 0))
+	    .join("")}</div>`;
 }
 
 function renderCustomerCardsPanel(type: string, segments: CustomerSegment[], active: boolean) {
@@ -1076,26 +736,6 @@ function renderCustomerCardsPanel(type: string, segments: CustomerSegment[], act
 
 function renderCustomerCard(segment: CustomerSegment, open: boolean) {
   return `<details class="customer-card"${open ? " open" : ""}><summary><div class="customer-card-title"><strong>${escapeHtml(segment.segmentName)}</strong><div class="customer-badges"><span class="badge">${escapeHtml(industryFitLabel(segment.industryFit))}</span><span class="badge">${escapeHtml(confidenceLabel(segment.confidence))}</span>${segment.isInferred ? `<span class="badge warning">推断</span>` : ""}</div></div><div class="customer-preview"><div><strong>行业：</strong>${escapeHtml(segment.industry || "暂未判断")}</div><div><strong>细分行业：</strong>${escapeHtml(joinList(segment.subIndustries))}</div><div><strong>典型岗位：</strong>${escapeHtml(joinList(segment.roles))}</div><div><strong>核心场景：</strong>${escapeHtml(joinList(segment.useCases))}</div><div><strong>核心痛点：</strong>${escapeHtml(joinList(segment.painPoints))}</div><div><strong>购买动机：</strong>${escapeHtml(joinList(segment.paymentMotivations))}</div></div><div class="customer-more">更多详情（组织类型、能力需求、决策者等）</div></summary><div class="customer-detail"><div class="customer-detail-grid"><div class="customer-detail-item"><strong>组织类型</strong><span>${escapeHtml(segment.organizationType || "暂未判断")}</span></div><div class="customer-detail-item"><strong>企业规模</strong><span>${escapeHtml(segment.companySize || "暂未判断")}</span></div><div class="customer-detail-item"><strong>典型部门</strong><span>${escapeHtml(joinList(segment.departments))}</span></div><div class="customer-detail-item"><strong>核心任务</strong><span>${escapeHtml(joinList(segment.jobsToBeDone))}</span></div><div class="customer-detail-item"><strong>需要能力</strong><span>${escapeHtml(joinList(segment.requiredCapabilities))}</span></div><div class="customer-detail-item"><strong>使用者</strong><span>${escapeHtml(joinList(segment.users))}</span></div><div class="customer-detail-item"><strong>决策者</strong><span>${escapeHtml(joinList(segment.buyers))}</span></div><div class="customer-detail-item"><strong>预期价值</strong><span>${escapeHtml(joinList(segment.expectedValue))}</span></div><div class="customer-detail-item"><strong>证据来源</strong><span>${escapeHtml(joinList(segment.evidenceSources))}</span></div><div class="customer-detail-item"><strong>匹配原因</strong><span>${escapeHtml(segment.industryFitReason || "暂未判断")}</span></div></div></div></details>`;
-}
-
-function renderIndustryDistribution(segments: CustomerSegment[]) {
-  const industries = Array.from(
-    segments.reduce<Map<string, { count: number; fit: string; reasons: string[] }>>((acc, segment) => {
-      if (!segment.industry) return acc;
-      const current = acc.get(segment.industry) ?? { count: 0, fit: segment.industryFit, reasons: [] };
-      current.count += 1;
-      current.fit = strongerIndustryFit(current.fit, segment.industryFit);
-      if (segment.industryFitReason) current.reasons.push(segment.industryFitReason);
-      acc.set(segment.industry, current);
-      return acc;
-    }, new Map())
-  ).slice(0, 8);
-  if (!industries.length) return "";
-
-  const total = segments.length || 1;
-  return `<h3>行业分布</h3><div class="customer-summary-grid">${industries
-    .map(([industry, item]) => `<div class="customer-summary-card"><strong>${escapeHtml(industry)}</strong><div class="industry-share">${Math.round((item.count / total) * 100)}%</div><p>${escapeHtml(industryFitLabel(item.fit))}</p></div>`)
-    .join("")}</div>`;
 }
 
 function prioritizedCustomerSegments(segments: CustomerSegment[]) {
@@ -1173,11 +813,6 @@ function confidenceLabel(value: string) {
   return "置信度：中";
 }
 
-function strongerIndustryFit(left: string, right: string) {
-  const rank: Record<string, number> = { low: 1, medium: 2, high: 3 };
-  return (rank[right] ?? 2) > (rank[left] ?? 2) ? right : left;
-}
-
 function profileValue(translation: Record<string, unknown> | null, field: string, fallback?: string | null) {
   return typeof translation?.[field] === "string" && translation[field].trim() ? translation[field] : fallback || "暂未获取";
 }
@@ -1229,13 +864,6 @@ type PromotionSignal = {
   tags: string[];
 };
 
-type PromotionAudienceScenario = {
-  segment: string;
-  coreAppeal: string;
-  scenarios: string[];
-  channels: string[];
-};
-
 type PromotionStrategy = {
   title: string;
   points: string[];
@@ -1247,7 +875,7 @@ function renderPromotionSection(promotions: PromotionItem[], summary: Record<str
   const adCount = typeof summary?.adCount === "number" ? summary.adCount : promotions.length;
   const channelCount = analysis.channels.length || Object.keys(platformCountsFromPromotions(promotions)).length;
   const sellingPointCount = analysis.coreSellingPoints.length;
-  const audienceCount = analysis.audienceScenarios.length || analysis.targetAudiences.length;
+  const audienceCount = analysis.targetAudiences.length;
 
   if (!promotions.length && !hasPromotionSummary(summary)) {
     return `<div class="promotion-module"><div class="promotion-head"><div><h2>广告和推广</h2><p class="muted">暂未获取广告或官网推广素材。</p></div></div><div class="promotion-empty">当前没有足够素材生成广告推广分析。重新采集广告源后，此处会展示覆盖渠道、目标人群、传播信息和策略总结。</div></div>`;
@@ -1276,10 +904,6 @@ function renderPromotionSection(promotions: PromotionItem[], summary: Record<str
       <div class="promotion-signal-grid">${analysis.communicationSignals.map(renderPromotionSignalCard).join("")}</div>
     </div>
     <div>
-      <h3 class="promotion-title">目标人群与场景</h3>
-      <div class="promotion-audience-grid">${analysis.audienceScenarios.map(renderPromotionAudienceCard).join("")}</div>
-    </div>
-    <div>
       <h3 class="promotion-title">策略总结</h3>
       <div class="promotion-strategy-grid">${analysis.strategySummary.map(renderPromotionStrategyCard).join("")}</div>
     </div>
@@ -1293,10 +917,6 @@ function renderPromotionOverviewCard(item: PromotionOverviewItem) {
 
 function renderPromotionSignalCard(item: PromotionSignal) {
   return `<div class="promotion-signal"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary || "暂未判断")}</p><div class="promotion-tags">${item.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div></div>`;
-}
-
-function renderPromotionAudienceCard(item: PromotionAudienceScenario) {
-  return `<div class="promotion-audience"><div class="promotion-audience-head"><strong>${escapeHtml(item.segment)}</strong><span class="badge">${escapeHtml(item.channels[0] || "渠道待判断")}</span></div><dl><div><dt>核心诉求</dt><dd>${escapeHtml(item.coreAppeal || "暂未判断")}</dd></div><div><dt>高频场景</dt><dd>${escapeHtml(joinList(item.scenarios))}</dd></div><div><dt>触达渠道</dt><dd>${item.channels.map((channel) => `<span class="tag">${escapeHtml(channel)}</span>`).join("") || "暂未判断"}</dd></div></dl></div>`;
 }
 
 function renderPromotionStrategyCard(item: PromotionStrategy) {
@@ -1333,7 +953,6 @@ function normalizePromotionAnalysis(promotions: PromotionItem[], summary: Record
   const coreSellingPoints = promotionArray(summary?.coreSellingPoints, 8, 32);
   const overview = promotionObjectArray(summary?.overview, normalizePromotionOverviewItem, 5).filter((item) => !isPromotionDirectionCard(item.title));
   const communicationSignals = promotionObjectArray(summary?.communicationSignals, normalizePromotionSignal, 3).filter((item) => !isPromotionDirectionCard(item.title));
-  const audienceScenarios = promotionObjectArray(summary?.audienceScenarios, normalizePromotionAudienceScenario, 4);
   const strategySummary = promotionObjectArray(summary?.strategySummary, normalizePromotionStrategy, 3);
   const sourceCoverage = textValue(summary?.sourceCoverage) || formatPlatformCounts(summary?.platformCounts) || formatPlatformCounts(platformCounts);
   const targetAudience = textValue(summary?.targetAudience) || joinList(uniquePromotionValues(promotions, "targetAudience").slice(0, 4));
@@ -1356,12 +975,9 @@ function normalizePromotionAnalysis(promotions: PromotionItem[], summary: Record
 	          { title: "使用场景", summary: useCases || "暂未判断", details: splitChineseList(useCases).slice(0, 4) },
 	          { title: "核心卖点", summary: sellingPoints || "暂未判断", details: normalizedSellingPoints.slice(0, 4) }
 	        ],
-	    communicationSignals: communicationSignals.length
-	      ? communicationSignals
-	      : buildFallbackPromotionSignals(promotions, normalizedSellingPoints, useCases),
-    audienceScenarios: audienceScenarios.length
-      ? audienceScenarios
-      : buildFallbackAudienceScenarios(promotions, normalizedAudiences, normalizedChannels, useCases),
+    communicationSignals: communicationSignals.length
+      ? communicationSignals
+      : buildFallbackPromotionSignals(promotions, normalizedSellingPoints, useCases),
     strategySummary: strategySummary.length
       ? strategySummary
       : buildFallbackPromotionStrategies(normalizedChannels, normalizedAudiences, normalizedSellingPoints, promotionDirection)
@@ -1382,17 +998,6 @@ function normalizePromotionSignal(value: Record<string, unknown>): PromotionSign
   return { title, summary, tags: promotionArray(value.tags, 5, 20) };
 }
 
-function normalizePromotionAudienceScenario(value: Record<string, unknown>): PromotionAudienceScenario | null {
-  const segment = textValue(value.segment).slice(0, 32);
-  if (!segment) return null;
-  return {
-    segment,
-    coreAppeal: textValue(value.coreAppeal).slice(0, 90),
-    scenarios: promotionArray(value.scenarios, 4, 28),
-    channels: promotionArray(value.channels, 4, 24)
-  };
-}
-
 function normalizePromotionStrategy(value: Record<string, unknown>): PromotionStrategy | null {
   const title = textValue(value.title).slice(0, 28);
   const points = promotionArray(value.points, 4, 60);
@@ -1411,18 +1016,6 @@ function buildFallbackPromotionSignals(promotions: PromotionItem[], sellingPoint
 
 function isPromotionDirectionCard(title: string) {
   return title.trim() === "推广方向";
-}
-
-function buildFallbackAudienceScenarios(promotions: PromotionItem[], audiences: string[], channels: string[], useCases: string) {
-  const promotionAudiences = audiences.length ? audiences : uniquePromotionValues(promotions, "targetAudience").slice(0, 4);
-  const scenarioTags = splitChineseList(useCases).length ? splitChineseList(useCases) : uniquePromotionValues(promotions, "useCase").slice(0, 4);
-  const values = promotionAudiences.length ? promotionAudiences : ["目标用户待判断"];
-  return values.slice(0, 4).map((audience) => ({
-    segment: audience,
-    coreAppeal: "根据广告文案中的人群、场景和卖点归纳，具体需结合原始素材复核。",
-    scenarios: scenarioTags.slice(0, 3),
-    channels: channels.slice(0, 3)
-  }));
 }
 
 function buildFallbackPromotionStrategies(channels: string[], audiences: string[], sellingPoints: string[], direction: string) {
@@ -1492,7 +1085,6 @@ function hasPromotionSummary(summary: Record<string, unknown> | null) {
       textValue(summary.sellingPoints) ||
       Array.isArray(summary.overview) ||
       Array.isArray(summary.communicationSignals) ||
-      Array.isArray(summary.audienceScenarios) ||
       Array.isArray(summary.strategySummary)
   );
 }

@@ -103,7 +103,7 @@ function extractPricingBlock(block: string, billingPeriod: "month" | "year") {
     const position = positions.findIndex((item) => item.name === name && item.index === index);
     const nextIndex = positions[position + 1]?.index ?? block.length;
     const window = block.slice(index, nextIndex);
-    const price = findPrice(window, name, billingPeriod);
+    const price = findPrice(window, name);
     const features = uniqueValues(
       [
         /transcription[^.。!！?？]{0,120}/i.exec(window)?.[0],
@@ -245,7 +245,7 @@ function extractFeatureSnippets(window: string) {
   );
 }
 
-function findPrice(window: string, planName: string, billingPeriod?: "month" | "year") {
+function findPrice(window: string, planName: string) {
   if (/enterprise/i.test(planName)) {
     return {
       value: /schedule a demo|contact sales|custom/i.test(window) ? "Schedule a demo / Custom" : "暂未获取",

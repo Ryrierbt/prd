@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { recordSource } from "@/lib/research/collectors/sources";
 import { fetchText } from "@/lib/research/utils/fetcher";
-import { parseHtmlPage, splitSentences, truncate, uniqueValues } from "@/lib/research/utils/text";
+import { parseHtmlPage, splitSentences, uniqueValues } from "@/lib/research/utils/text";
 
 const featureKeywords = [
   "AI",
@@ -126,4 +126,3 @@ function inferPlatforms(text: string) {
   ];
   return platforms.filter(([keyword]) => text.toLowerCase().includes(keyword)).map(([, label]) => label);
 }
-
