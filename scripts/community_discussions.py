@@ -32,8 +32,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--app-name", required=True)
     parser.add_argument("--queries-json", required=True)
-    parser.add_argument("--youtube-video-limit", type=int, default=6)
-    parser.add_argument("--youtube-comments-per-video", type=int, default=8)
+    parser.add_argument("--youtube-video-limit", type=int, default=20)
+    parser.add_argument("--youtube-videos-per-query", type=int, default=5)
+    parser.add_argument("--youtube-comments-per-video", type=int, default=20)
     return parser.parse_args()
 
 
@@ -90,7 +91,7 @@ def youtube_title(url: str) -> str:
     return "YouTube 视频"
 
 
-def collect_youtube(queries: List[str], video_limit: int, comments_per_video: int) -> Dict[str, Any]:
+def collect_youtube(queries: List[str], video_limit: int, videos_per_query: int, comments_per_video: int) -> Dict[str, Any]:
     try:
         from youtube_comment_downloader import SORT_BY_POPULAR, YoutubeCommentDownloader
     except ImportError as exc:
@@ -100,7 +101,7 @@ def collect_youtube(queries: List[str], video_limit: int, comments_per_video: in
     seen_video_ids = set()
     query_map: Dict[str, List[str]] = {}
     errors: List[str] = []
-    per_query_limit = max(1, video_limit // max(len(queries), 1))
+    per_query_limit = max(videos_per_query, 1)
 
     for query in queries:
         try:
@@ -168,7 +169,9 @@ def main() -> None:
     if not queries:
         queries = [f"{args.app_name} review", f"{args.app_name} alternative", f"{args.app_name} vs"]
 
-    youtube = collect_youtube(queries, max(args.youtube_video_limit, 1), max(args.youtube_comments_per_video, 1))
+    videos_per_query = max(args.youtube_videos_per_query, 1)
+    video_limit = max(args.youtube_video_limit, len(queries) * videos_per_query, 1)
+    youtube = collect_youtube(queries, video_limit, videos_per_query, max(args.youtube_comments_per_video, 1))
     items = youtube.get("items", [])
     print(json.dumps({"queries": queries, "youtube": youtube, "items": items}, ensure_ascii=False))
 

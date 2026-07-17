@@ -13,12 +13,14 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@perttu/app-store-scraper": "^2.0.0",
     "@prisma/client": "^6.10.1",
     "app-store-scraper": "git+ssh://git@github.com/Ryrierbt/app-store-scraper.git",
     "cheerio": "^1.0.0",
     "clsx": "^2.1.1",
     "google-play-scraper": "^10.1.3",
     "next": "^15.3.4",
+    "playwright": "^1.61.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.3",

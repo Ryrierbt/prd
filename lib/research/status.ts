@@ -6,6 +6,7 @@ export const taskStatuses = {
   collectingReviews: "COLLECTING_REVIEWS",
   collectingCommunity: "COLLECTING_COMMUNITY",
   collectingPromotion: "COLLECTING_PROMOTION",
+  collectionReview: "COLLECTION_REVIEW",
   analyzing: "ANALYZING",
   generatingReport: "GENERATING_REPORT",
   completed: "COMPLETED",
@@ -23,6 +24,7 @@ export const statusLabels: Record<TaskStatus, string> = {
   COLLECTING_REVIEWS: "正在收集用户评价",
   COLLECTING_COMMUNITY: "正在收集社区讨论",
   COLLECTING_PROMOTION: "正在收集广告及推广信息",
+  COLLECTION_REVIEW: "采集完成，等待确认",
   ANALYZING: "正在分析和分类",
   GENERATING_REPORT: "正在生成报告",
   COMPLETED: "已完成",
@@ -38,6 +40,7 @@ export const statusOrder: Array<{ status: TaskStatus; progress: number }> = [
   { status: taskStatuses.collectingReviews, progress: 55 },
   { status: taskStatuses.collectingCommunity, progress: 66 },
   { status: taskStatuses.collectingPromotion, progress: 70 },
+  { status: taskStatuses.collectionReview, progress: 82 },
   { status: taskStatuses.analyzing, progress: 84 },
   { status: taskStatuses.generatingReport, progress: 94 },
   { status: taskStatuses.completed, progress: 100 }

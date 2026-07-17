@@ -3,9 +3,19 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type RetryMode = "all" | "failed" | "reviews";
+type RetryMode = "all" | "failed" | "reviews" | "analysis";
 
-export function RetryTaskButton({ taskId, hasFailedSources = false, hasFailedReviewSources = false }: { taskId: string; hasFailedSources?: boolean; hasFailedReviewSources?: boolean }) {
+export function RetryTaskButton({
+  taskId,
+  hasFailedSources = false,
+  hasFailedReviewSources = false,
+  canContinueAnalysis = false
+}: {
+  taskId: string;
+  hasFailedSources?: boolean;
+  hasFailedReviewSources?: boolean;
+  canContinueAnalysis?: boolean;
+}) {
   const router = useRouter();
   const [retryingMode, setRetryingMode] = useState<RetryMode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -15,12 +25,19 @@ export function RetryTaskButton({ taskId, hasFailedSources = false, hasFailedRev
 
     setRetryingMode(mode);
     setError(null);
-    const endpoint = mode === "reviews" ? `/api/tasks/${taskId}/retry-reviews` : mode === "failed" ? `/api/tasks/${taskId}/retry-failed` : `/api/tasks/${taskId}/retry`;
+    const endpoint =
+      mode === "analysis"
+        ? `/api/tasks/${taskId}/continue-analysis`
+        : mode === "reviews"
+          ? `/api/tasks/${taskId}/retry-reviews`
+          : mode === "failed"
+            ? `/api/tasks/${taskId}/retry-failed`
+            : `/api/tasks/${taskId}/retry`;
     const response = await fetch(endpoint, { method: "POST" });
     setRetryingMode(null);
 
     if (!response.ok) {
-      setError(mode === "reviews" ? "评论重新采集失败" : mode === "failed" ? "失败项重新采集失败" : "重新采集失败");
+      setError(mode === "analysis" ? "继续 AI 分析失败" : mode === "reviews" ? "评论重新采集失败" : mode === "failed" ? "失败项重新采集失败" : "重新采集失败");
       return;
     }
 
@@ -29,15 +46,17 @@ export function RetryTaskButton({ taskId, hasFailedSources = false, hasFailedRev
 
   return (
     <div className="workspace-retry-wrap">
-      <button
-        type="button"
-        onClick={() => retry("all")}
-        disabled={Boolean(retryingMode)}
-        className="workspace-secondary-button"
-      >
-        {retryingMode === "all" ? "重新采集中..." : "重新采集"}
-      </button>
-      {hasFailedReviewSources ? (
+      {!canContinueAnalysis ? (
+        <button
+          type="button"
+          onClick={() => retry("all")}
+          disabled={Boolean(retryingMode)}
+          className="workspace-secondary-button"
+        >
+          {retryingMode === "all" ? "重新采集中..." : "重新采集"}
+        </button>
+      ) : null}
+      {hasFailedReviewSources && !canContinueAnalysis ? (
         <button
           type="button"
           onClick={() => retry("reviews")}
@@ -54,7 +73,17 @@ export function RetryTaskButton({ taskId, hasFailedSources = false, hasFailedRev
           disabled={Boolean(retryingMode)}
           className="workspace-secondary-button"
         >
-          {retryingMode === "failed" ? "失败项采集中..." : "失败项重新采集"}
+          {retryingMode === "failed" ? "采集中..." : canContinueAnalysis ? "采集缺失内容" : "失败项重新采集"}
+        </button>
+      ) : null}
+      {canContinueAnalysis ? (
+        <button
+          type="button"
+          onClick={() => retry("analysis")}
+          disabled={Boolean(retryingMode)}
+          className="workspace-primary-link"
+        >
+          {retryingMode === "analysis" ? "分析中..." : "继续 AI 分析"}
         </button>
       ) : null}
       {error ? <span className="workspace-button-error">{error}</span> : null}

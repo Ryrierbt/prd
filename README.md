@@ -1,21 +1,25 @@
 # 海外 App 竞品调研工具
 
-一个可运行的本地 Web 工具：创建海外 App 调研任务后，系统采集公开官网、定价页和 Apple App Store 信息，记录每个来源的状态，并生成可查看、下载的 HTML 调研报告。
+一个可运行的本地 Web 工具：创建海外 App 调研任务后，系统先采集官网、定价页、应用商店、社区和广告等公开来源，记录每个来源的状态，再在用户确认后使用 DeepSeek 生成可查看、下载的 HTML 调研报告。
 
 ## 功能
 
-- 创建、查看和重试调研任务
+- 创建、查看、定向重新采集和删除调研任务
 - 采集官网介绍、功能和官方推广页面
 - 采集官网定价页，按套餐展示月付价格和年付价格
 - 使用 GitHub 依赖 `git@github.com:Ryrierbt/app-store-scraper.git` 采集 Apple App Store 应用信息、评分分布与评论
 - 使用 `google-play-scraper` 采集 Google Play 应用信息、评分分布与评论
-- 使用 `youtube-comment-downloader` 采集 YouTube 公开视频评论，生成社区热议分析
+- 使用 `youtube-comment-downloader` 采集 YouTube 公开视频评论，并使用本机 Chrome profile 采集 TikTok 视频评论，生成社区热议分析
 - App Store 评论端由独立 `app-store-scraper` 包统一处理，带浏览器请求头、多区域和每区域 3 次重试
 - 支持通过本地 Playwright 浏览器采集 Facebook Ads Library 公开广告素材
 - 支持通过 `google-ads-transparency-mcp` 采集 Google Ads Transparency Center 公开广告素材
 - 使用 DeepSeek 综合官网、App Store 与广告素材生成可点击功能标签，并展开官方能力、用户好评和风险问题
 - 使用 DeepSeek 将目标客户群体拆成行业、细分行业、组织类型、部门、岗位、场景、痛点、购买动机和证据来源
 - 保存来源链接、采集时间和失败原因
+- 采集阶段与 AI 分析阶段分离；如果存在失败来源，任务会暂停等待用户选择“采集缺失内容”或“继续 AI 分析”
+- 同名任务复用时会同步用户新填写的官网、App Store、Google Play 和关键词，避免旧任务继续使用空地址
+- 历史任务页支持按来源定向重新采集，也支持删除任务及其对应报告和采集数据
+- 报告概览展示采集来源、定价方案、应用商店评价样本、推广素材、YouTube 视频/评论、TikTok 视频/评论和 AI 分析模型
 - 在线查看或下载 HTML 调研报告
 
 ## 环境要求
@@ -64,11 +68,47 @@ npx prisma generate
 
 ## 使用流程
 
-1. 打开首页，填写 App 名称，推荐同时填写官网 URL 和 App Store URL。
+1. 打开首页，填写 App 名称，推荐同时填写官网 URL、App Store URL 和 Google Play URL，避免同名应用自动匹配错误。
 2. 创建任务后会自动开始采集，可进入任务详情查看实时状态和每个来源的结果。
-3. 任务完成后点击“查看报告”。
-4. 报告中的定价表分别展示月付价格与年付价格，均保留官网的原始币种和计价单位。
-5. 某个公开来源不可访问或无评论时，任务会标记为“部分完成”，报告会保留真实失败说明，不会用推测内容补齐。
+3. 系统会先完成全部采集，再检查失败来源。
+4. 如果没有失败来源，任务会自动进入 DeepSeek 分析并生成报告。
+5. 如果存在失败来源，任务会暂停在“采集完成，等待确认”状态。此时可以选择“采集缺失内容”，或直接选择“继续 AI 分析”。
+6. 报告中的定价表分别展示月付价格与年付价格，均保留官网的原始币种和计价单位。
+7. 某个公开来源不可访问或无评论时，报告会保留真实失败说明，不会用推测内容补齐。
+
+## 历史任务管理
+
+历史任务页按应用分组展示任务。每条任务支持：
+
+- `查看`：进入任务详情页，查看采集进度、成功来源、失败来源和跳过来源。
+- `报告`：打开已生成的 HTML 调研报告。
+- `重新采集`：弹出来源选择，可单独重新采集苹果商城、谷歌应用商城、谷歌广告、Meta 广告、TikTok 或 YouTube。
+- `删除`：删除该任务，同时删除对应报告、采集数据、用户评价、广告素材、社区内容、定价数据和 AI 分析结果。
+
+删除前页面会二次确认。删除后不会影响其他任务。
+
+## 报告概览
+
+报告顶部会汇总本次调研覆盖范围，包括：
+
+- 采集来源成功数 / 总数
+- 定价方案数量
+- 应用商店评价样本数量
+- 推广素材数量
+- YouTube 视频数 / 评论数
+- TikTok 视频数 / 评论数
+- AI 分析模型
+
+如果 YouTube 或 TikTok 没有采集到内容，对应卡片会显示 `0/0`，报告仍会保留其他来源结果。
+
+### 采集失败后的处理
+
+任务进入“采集完成，等待确认”时，不会立即消耗 DeepSeek API，也不会生成报告。你可以根据失败项决定下一步：
+
+- `采集缺失内容`：只重新采集失败来源，成功后自动继续；如果仍有失败，会再次暂停等待选择。
+- `继续 AI 分析`：忽略失败来源，直接用已经采集到的数据进行 DeepSeek 分析和报告生成。
+
+如果你在首页重新提交同名 App，并补充了新的官网、App Store 或 Google Play 地址，系统会更新等待中的旧任务字段。之后点击“采集缺失内容”会使用新地址，而不是继续用旧的空地址或错误搜索结果。
 
 ## 应用商店评论采集
 
@@ -102,18 +142,30 @@ APP_STORE_REVIEW_PROXY_URL=""
 # APP_STORE_REVIEW_PROXY_URL="https://apppan.pangjiong.com/api/reviews?search={search}&country={country}"
 ```
 
-Google Play 评论通过 `google-play-scraper` 抓取美国区最新评价。每个平台都最多抓取 200 条最新评论，并以相同的高质量规则筛选最多 60 条写入报告；两端都成功时，DeepSeek 会同时分析最多 120 条评论。可在 `.env` 中调整 Google Play 地区与语言：
+Google Play 评论通过 `google-play-scraper` 抓取美国区最新评价。每个平台都最多抓取 200 条最新评论，并以相同的高质量规则筛选最多 60 条写入报告；两端都成功时，DeepSeek 会同时分析最多 120 条评论。Google Play 摘要会保存商店简介、完整描述、最近更新、分类、评分和评分数量，用于后续功能分析。可在 `.env` 中调整 Google Play 地区与语言：
 
 ```env
 GOOGLE_PLAY_COUNTRY="us"
 GOOGLE_PLAY_LANGUAGE="en"
 ```
 
-Apple App Store 或 Google Play 任一评论端失败时，报告仍会保留另一端的评论与分析，并显示失败原因；任务页会出现“重新采集评论”按钮，仅重试缺失的平台。
+Apple App Store 或 Google Play 任一评论端失败时，任务会先暂停等待确认。你可以重试缺失评论来源，也可以继续分析；继续分析时报告仍会保留另一端的评论与分析，并显示失败原因。
+
+Google Play 自动搜索可能遇到同名应用或仿冒应用。为避免误采，建议填写明确的 Google Play URL。若目标应用没有官方 Google Play 应用，或该应用评分分布为 0、评论接口返回空，系统会记录为评论来源失败，不会用相似应用评论硬凑。
+
+## App Store 版本历史
+
+项目会尝试采集 App Store 版本历史，并写入 `APP_STORE_VERSION_HISTORY` 来源和同名分析结果。采集顺序为：
+
+1. 优先调用 `@perttu/app-store-scraper` 的 `versionHistory()`。
+2. 如果返回空，再解析 `apps.apple.com/{country}/app/id...` 页面中的 `script#serialized-server-data`。
+3. 如果完整历史仍不可用，至少保留当前版本，并在结果中标记 `fullHistory: false`。
+
+需要注意：Apple 商品页存在地区跳转和访问限制。`itunes.apple.com/lookup` 通常能稳定返回当前版本、发布日期和更新说明，但它不提供完整历史版本；完整历史依赖对应国家的 `apps.apple.com` 商品页可访问。
 
 ## 社区热议
 
-社区热议会使用 [youtube-comment-downloader](https://github.com/egbertbouman/youtube-comment-downloader) 搜索与抓取 YouTube 公开视频评论。查询会同时覆盖产品评价、替代品、竞品对比和补充关键词，不只搜索 App 品牌名。
+社区热议会使用 [youtube-comment-downloader](https://github.com/egbertbouman/youtube-comment-downloader) 搜索与抓取 YouTube 公开视频评论。TikTok 会复用同一组查询词，使用本机 Chrome profile 打开 TikTok 登录页；用户在浏览器中登录或确认已登录后，需要回到任务详情页点击“已登录，继续采集 TikTok”，随后系统再搜索视频、滚动结果页、打开视频页并捕获 `/api/comment/list` 响应提取评论。查询会同时覆盖产品评价、替代品、竞品对比和补充关键词，不只搜索 App 品牌名。
 
 先安装本地 Python 依赖：
 
@@ -121,23 +173,30 @@ Apple App Store 或 Google Play 任一评论端失败时，报告仍会保留另
 python3 -m pip install --target .python-packages -r requirements-community.txt
 ```
 
-YouTube 不需要 API Key。可在 `.env` 中调整视频数量和每个视频的评论数量：
+YouTube 不需要 API Key。TikTok 不需要 API Key，但需要可用的本机 Chrome profile。采集任务进入 TikTok 阶段后会弹出浏览器并暂停等待确认；如果没有可用 profile、用户未在限定时间内确认、搜索结果为空或平台限制评论加载，TikTok 来源会记录为跳过或失败，不影响 YouTube 已采集内容入库。可在 `.env` 中调整视频数量、每个搜索词的视频数量、每个视频的评论数量和登录确认等待时间：
 
 ```env
 COMMUNITY_DISCUSSIONS_PYTHON="python3"
-COMMUNITY_YOUTUBE_VIDEO_LIMIT="6"
-COMMUNITY_YOUTUBE_COMMENTS_PER_VIDEO="8"
+COMMUNITY_YOUTUBE_VIDEO_LIMIT="20"
+COMMUNITY_YOUTUBE_VIDEOS_PER_QUERY="5"
+COMMUNITY_YOUTUBE_COMMENTS_PER_VIDEO="20"
+TIKTOK_PROFILE_DIR="/Users/sibu/.pytok/profiles/mr.rbt.sizhe@gmail.com"
+TIKTOK_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+TIKTOK_VIDEO_LIMIT="20"
+TIKTOK_VIDEOS_PER_QUERY="4"
+TIKTOK_COMMENTS_PER_VIDEO="10"
+TIKTOK_LOGIN_CONFIRM_TIMEOUT_MS="600000"
 ```
 
-DeepSeek 会将 YouTube 社区内容分别归纳为热点 Top 5、寻找替代品原因、竞品推荐流向、视频测评与评论区真实反馈差距、产品机会；结论必须绑定具体视频或评论证据，不会为了凑数量输出结果。
+DeepSeek 会将 YouTube / TikTok 社区内容分别归纳为跨平台热点 Top 5、寻找替代品原因、竞品推荐流向、视频测评与评论区真实反馈差距、产品机会；结论必须绑定具体视频或评论证据，不会为了凑数量输出结果。
 
 ## DeepSeek 评价总结
 
 在首页的 `DeepSeek API` 区域输入并保存 API Key。密钥仅保存在本地 SQLite 数据库中，页面和报告不会显示或返回其内容。
 
-配置完成后，新建任务或重试已有任务时，系统会翻译并压缩报告中的基础信息和定价核心权益，并在成功采集 App Store 评论后对筛选出的高质量评论生成“主要好评、主要问题、产品机会”总结。报告页的“更新 AI 总结”只处理已有数据，不会重新采集。未配置 Key、没有可用评论或模型请求失败时，任务仍会正常完成，报告保留原始采集内容。
+配置完成后，系统会在全部采集完成且没有失败来源，或用户点击“继续 AI 分析”后，统一执行 DeepSeek 分析。报告页的“更新 AI 总结”只处理已有数据，不会重新采集。未配置 Key、没有可用评论或模型请求失败时，任务仍会保留原始采集内容和失败原因。
 
-功能分析会在官网、App Store 和广告/推广素材采集后运行。DeepSeek 会生成最多 8 个功能标签；报告中的每个标签可点击展开，查看官方声称能力、证据来源、App Store 评价中的正向反馈和负向问题。未配置 DeepSeek 或请求失败时，报告会回退展示原始功能关键词。
+功能分析会综合官网、App Store、Google Play、用户评价和广告/推广素材。DeepSeek 会生成最多 8 个功能标签；报告中的每个标签可点击展开，查看更完整的官方声称能力、证据来源、用户评价中的正向反馈和负向问题。能力描述要求完整列出材料中明确出现的语言、平台、集成、文件类型、导入导出方式和协作动作，不再用“等”“多种语言”“多个平台”省略已知枚举。未配置 DeepSeek 或请求失败时，报告会回退展示原始功能关键词。
 
 目标客户画像会在官网、定价、App Store、用户评价和广告/推广素材采集后运行。DeepSeek 会输出核心客户、高价值客户、次级客户和潜在客户，按行业、细分行业、组织类型、部门、岗位、使用场景、核心痛点、购买动机、付费价值、证据来源和置信度进行结构化展示。证据不足的客户群体会标记为“推断”，并降低置信度；未配置 DeepSeek 或请求失败时，报告会回退展示原始目标用户字段。
 
@@ -259,7 +318,8 @@ npm run dev -- -H 127.0.0.1 -p 3001
 - 任务 worker 运行在 Next.js 进程内，重启开发服务会中断正在采集的任务。
 - Apple 的公开评论接口可能返回空数据；这不会影响应用信息和评分分布的采集。
 - 当前定价解析针对官网公开文本，复杂动态定价页、地区差异和登录后价格仍可能需要人工复核。
-- 当前未接入 Google Play 评论和广告资料库；DeepSeek 总结需要用户先在首页配置有效 API Key。
+- Google Play 自动搜索可能选中同名但非目标产品的应用。建议填写 Google Play URL；没有官方 Android 应用时应将 Google Play 评论视为缺失来源。
+- DeepSeek 总结需要用户先在首页配置有效 API Key。
 
 ## 项目结构
 

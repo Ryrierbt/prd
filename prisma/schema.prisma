@@ -59,6 +59,7 @@ model AppProfile {
   useCases    String?
   platforms   String?
   features    String?
+  iconUrl     String?
   task        ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 }
 

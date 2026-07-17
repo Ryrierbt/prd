@@ -8,6 +8,7 @@ tsconfig.tsbuildinfo
 .env
 .env*.local
 .npm-cache
+.runtime
 .python-packages
 public/ad-assets
 prisma/dev.db

@@ -5,6 +5,7 @@ import { TaskProgress } from "@/components/task-progress";
 import { StatusBadge } from "@/components/status-badge";
 import { RetryTaskButton } from "@/components/retry-task-button";
 import { TaskAutoRefresh } from "@/components/task-auto-refresh";
+import { TikTokLoginConfirmButton } from "@/components/tiktok-login-confirm-button";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,8 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   const reviewSourceTypes = new Set(["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS", "GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"]);
   const hasFailedReviewSources = failedSources.some((source) => reviewSourceTypes.has(source.sourceType));
   const hasFailedNonReviewSources = failedSources.some((source) => !reviewSourceTypes.has(source.sourceType));
+  const isWaitingForCollectionDecision = task.status === "COLLECTION_REVIEW";
+  const isWaitingForTikTokLogin = task.status === "COLLECTING_COMMUNITY" && task.currentStep.includes("TikTok") && task.currentStep.includes("已登录");
 
   return (
     <SiteShell activeNav="tasks">
@@ -43,8 +46,16 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
           {[
             "COMPLETED",
             "PARTIAL_COMPLETED",
-            "FAILED"
-          ].includes(task.status) ? <RetryTaskButton taskId={task.id} hasFailedSources={hasFailedNonReviewSources} hasFailedReviewSources={hasFailedReviewSources} /> : null}
+            "FAILED",
+            "COLLECTION_REVIEW"
+          ].includes(task.status) ? (
+            <RetryTaskButton
+              taskId={task.id}
+              hasFailedSources={isWaitingForCollectionDecision ? failedSources.length > 0 : hasFailedNonReviewSources}
+              hasFailedReviewSources={isWaitingForCollectionDecision ? false : hasFailedReviewSources}
+              canContinueAnalysis={isWaitingForCollectionDecision}
+            />
+          ) : null}
           {task.report ? (
             <Link href={`/reports/${task.id}`} className="workspace-primary-link">
               查看报告
@@ -59,6 +70,12 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
       {task.errorMessage ? (
         <div className="workspace-notice">
           {task.errorMessage}
+        </div>
+      ) : null}
+      {isWaitingForTikTokLogin ? (
+        <div className="workspace-notice action">
+          <span>请在弹出的 TikTok 浏览器中完成登录或确认已登录，然后回到这里继续采集。</span>
+          <TikTokLoginConfirmButton taskId={task.id} />
         </div>
       ) : null}
       <div className="workspace-source-grid">

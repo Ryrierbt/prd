@@ -4,15 +4,42 @@ import { fetchText } from "@/lib/research/utils/fetcher";
 import { getOriginUrl, joinUrl, parseHtmlPage, splitSentences, truncate, uniqueValues } from "@/lib/research/utils/text";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { load } from "cheerio";
 import path from "node:path";
 
-const promotionPaths = ["/", "/features", "/pricing", "/blog", "/customers"];
+const fallbackPromotionPaths = ["/pricing", "/solutions", "/integrations", "/customers", "/case-studies", "/blog", "/resources", "/features"];
+const officialPageLimit = 8;
 const execFileAsync = promisify(execFile);
 
-export async function collectPromotion(taskId: string, websiteUrl: string | null, appName: string) {
-  await prisma.promotionItem.deleteMany({ where: { taskId } });
+type PromotionCollectOptions = {
+  official?: boolean;
+  meta?: boolean;
+  google?: boolean;
+};
 
-  if (!websiteUrl) {
+export async function collectPromotion(taskId: string, websiteUrl: string | null, appName: string, options: PromotionCollectOptions = {}) {
+  const collectOfficial = options.official ?? true;
+  const collectMeta = options.meta ?? true;
+  const collectGoogle = options.google ?? true;
+
+  if (collectOfficial && collectMeta && collectGoogle) {
+    await prisma.promotionItem.deleteMany({ where: { taskId } });
+  } else {
+    await prisma.promotionItem.deleteMany({
+      where: {
+        taskId,
+        platform: {
+          in: [
+            collectOfficial ? "Official Website" : "",
+            collectMeta ? "Facebook Ads Library" : "",
+            collectGoogle ? "Google Ads Transparency" : ""
+          ].filter(Boolean)
+        }
+      }
+    });
+  }
+
+  if (!websiteUrl && collectOfficial) {
     await recordSource({
       taskId,
       sourceType: "PROMOTION",
@@ -26,9 +53,10 @@ export async function collectPromotion(taskId: string, websiteUrl: string | null
   const origin = websiteUrl ? getOriginUrl(websiteUrl) : null;
   const items = [];
 
-  if (origin) {
-    for (const path of promotionPaths) {
-      const url = joinUrl(origin, path);
+  if (origin && collectOfficial) {
+    const pageCandidates = await discoverOfficialPromotionPages(origin);
+    for (const candidate of pageCandidates) {
+      const url = candidate.url;
       try {
         const rawHtml = await fetchText(url, { retries: 0, timeoutMs: 12000 });
         const page = parseHtmlPage(url, rawHtml);
@@ -38,7 +66,7 @@ export async function collectPromotion(taskId: string, websiteUrl: string | null
         await recordSource({
           taskId,
           sourceType: "PROMOTION",
-          sourceName: path === "/" ? "官网首页营销内容" : `官方页面 ${path}`,
+          sourceName: candidate.isHome ? "官网首页营销内容" : `官方页面 ${candidate.label}`,
           url,
           status: "SUCCESS",
           rawContent: `${page.title}\n${page.description}\n${page.text}`,
@@ -49,7 +77,7 @@ export async function collectPromotion(taskId: string, websiteUrl: string | null
           data: {
             taskId,
             platform: "Official Website",
-            title: page.title || `官方页面 ${path}`,
+            title: page.title || `官方页面 ${candidate.label}`,
             content: truncate(content, 1000),
             targetAudience: inferAudience(page.text).join("、") || "暂未获取",
             useCase: inferUseCase(page.text).join("、") || "暂未获取",
@@ -63,22 +91,245 @@ export async function collectPromotion(taskId: string, websiteUrl: string | null
         await recordSource({
           taskId,
           sourceType: "PROMOTION",
-          sourceName: path === "/" ? "官网首页营销内容" : `官方页面 ${path}`,
+          sourceName: candidate.isHome ? "官网首页营销内容" : `官方页面 ${candidate.label}`,
           url,
-          status: "FAILED",
+          status: candidate.isHome ? "FAILED" : "SKIPPED",
           errorMessage: error instanceof Error ? error.message : "推广页面采集失败"
         });
       }
     }
   }
 
-  const facebookAds = await collectFacebookAdsLibraryAds(taskId, appName, origin || websiteUrl || "https://www.facebook.com/ads/library/");
-  items.push(...facebookAds);
+  if (collectMeta) {
+    const facebookAds = await collectFacebookAdsLibraryAds(taskId, appName, origin || websiteUrl || "https://www.facebook.com/ads/library/");
+    items.push(...facebookAds);
+  }
 
-  const googleAds = await collectGoogleAdsTransparencyAds(taskId, appName, origin);
-  items.push(...googleAds);
+  if (collectGoogle) {
+    const googleAds = await collectGoogleAdsTransparencyAds(taskId, appName, origin);
+    items.push(...googleAds);
+  }
 
   return items;
+}
+
+type OfficialPageCandidate = {
+  url: string;
+  label: string;
+  score: number;
+  isHome?: boolean;
+};
+
+async function discoverOfficialPromotionPages(origin: string): Promise<OfficialPageCandidate[]> {
+  const homeUrl = joinUrl(origin, "/");
+  try {
+    const rawHtml = await fetchText(homeUrl, { retries: 0, timeoutMs: 12000 });
+    const [sitemapLinks, pageLinks] = await Promise.all([
+      discoverSitemapPromotionPages(origin),
+      Promise.resolve(extractUsefulOfficialLinks(origin, rawHtml))
+    ]);
+    const primaryCandidates = uniquePageCandidates([{ url: homeUrl, label: "/", score: 100, isHome: true }, ...pageLinks, ...sitemapLinks]);
+
+    if (primaryCandidates.length >= officialPageLimit) {
+      return primaryCandidates.slice(0, officialPageLimit);
+    }
+
+    return uniquePageCandidates([...primaryCandidates, ...buildFallbackPromotionCandidates(origin)]).slice(0, officialPageLimit);
+  } catch {
+    const sitemapLinks = await discoverSitemapPromotionPages(origin);
+    return uniquePageCandidates([{ url: homeUrl, label: "/", score: 100, isHome: true }, ...sitemapLinks, ...buildFallbackPromotionCandidates(origin)]).slice(0, officialPageLimit);
+  }
+}
+
+function extractUsefulOfficialLinks(origin: string, rawHtml: string): OfficialPageCandidate[] {
+  const $ = load(rawHtml);
+  const candidates: OfficialPageCandidate[] = [];
+
+  $("a[href]").each((_, element) => {
+    const href = $(element).attr("href");
+    const text = normalizeLinkText($(element).text());
+    const url = normalizeOfficialLink(origin, href);
+    if (!url) return;
+
+    const score = officialLinkScore(url, text);
+    if (score <= 0) return;
+    candidates.push({
+      url,
+      label: linkLabel(origin, url, text),
+      score
+    });
+  });
+
+  return candidates.sort((left, right) => right.score - left.score);
+}
+
+async function discoverSitemapPromotionPages(origin: string): Promise<OfficialPageCandidate[]> {
+  const sitemapUrls = await discoverSitemapUrls(origin);
+  const candidates: OfficialPageCandidate[] = [];
+
+  for (const sitemapUrl of sitemapUrls.slice(0, 4)) {
+    try {
+      const rawXml = await fetchText(sitemapUrl, { retries: 0, timeoutMs: 12000, headers: { Accept: "application/xml,text/xml,*/*;q=0.8" } });
+      candidates.push(...extractUsefulSitemapLinks(origin, rawXml));
+    } catch {
+      // Sitemap discovery is best effort. Missing or blocked sitemaps should not pause a report.
+    }
+  }
+
+  return candidates.sort((left, right) => right.score - left.score);
+}
+
+async function discoverSitemapUrls(origin: string) {
+  const urls = new Set<string>([joinUrl(origin, "/sitemap.xml")]);
+
+  try {
+    const robots = await fetchText(joinUrl(origin, "/robots.txt"), { retries: 0, timeoutMs: 8000, headers: { Accept: "text/plain,*/*;q=0.8" } });
+    for (const line of robots.split(/\r?\n/)) {
+      const match = line.match(/^sitemap:\s*(\S+)/i);
+      if (!match?.[1]) continue;
+      const sitemapUrl = normalizeOfficialLink(origin, match[1]);
+      if (sitemapUrl) urls.add(sitemapUrl);
+    }
+  } catch {
+    // robots.txt is optional.
+  }
+
+  return [...urls];
+}
+
+function extractUsefulSitemapLinks(origin: string, rawXml: string): OfficialPageCandidate[] {
+  const $ = load(rawXml, { xmlMode: true });
+  const candidates: OfficialPageCandidate[] = [];
+
+  $("url > loc").each((_, element) => {
+    const url = normalizeOfficialLink(origin, $(element).text().trim());
+    if (!url) return;
+    const score = officialLinkScore(url, "");
+    if (score <= 0) return;
+    candidates.push({
+      url,
+      label: linkLabel(origin, url, ""),
+      score: score - 2
+    });
+  });
+
+  return candidates;
+}
+
+function buildFallbackPromotionCandidates(origin: string): OfficialPageCandidate[] {
+  return fallbackPromotionPaths.map((pathValue, index) => ({
+    url: joinUrl(origin, pathValue),
+    label: pathValue,
+    score: 30 - index
+  }));
+}
+
+function normalizeOfficialLink(origin: string, href: string | undefined) {
+  if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) return null;
+  try {
+    const url = new URL(href, origin);
+    const originUrl = new URL(origin);
+    if (url.origin !== originUrl.origin) return null;
+    url.hash = "";
+    url.search = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+const highValuePathKeywords = [
+  "pricing",
+  "solutions",
+  "solution",
+  "integrations",
+  "integration",
+  "customers",
+  "customer",
+  "case-studies",
+  "case-study",
+  "stories",
+  "enterprise",
+  "business",
+  "school",
+  "schools",
+  "education",
+  "learn",
+  "plans",
+  "teams",
+  "sales",
+  "marketing",
+  "resources",
+  "blog",
+  "features",
+  "feature",
+  "product",
+  "use-cases",
+  "use-case",
+  "compare",
+  "demo"
+];
+
+const lowValuePathKeywords = [
+  "login",
+  "signin",
+  "sign-in",
+  "signup",
+  "sign-up",
+  "privacy",
+  "terms",
+  "security",
+  "careers",
+  "jobs",
+  "contact",
+  "download",
+  "help",
+  "support",
+  "docs",
+  "documentation",
+  "legal"
+];
+
+function officialLinkScore(url: string, text: string) {
+  const parsed = new URL(url);
+  const haystack = `${parsed.pathname.toLowerCase()} ${text.toLowerCase()}`;
+  if (parsed.pathname === "/" || parsed.pathname === "") return 100;
+  if (lowValuePathKeywords.some((keyword) => haystack.includes(keyword))) return -10;
+
+  let score = 0;
+  for (const keyword of highValuePathKeywords) {
+    if (haystack.includes(keyword)) score += 20;
+  }
+  const depth = parsed.pathname.split("/").filter(Boolean).length;
+  if (depth <= 2) score += 8;
+  if (text) score += Math.min(text.length, 30) / 10;
+  return score;
+}
+
+function uniquePageCandidates(candidates: OfficialPageCandidate[]) {
+  const seen = new Set<string>();
+  return candidates
+    .sort((left, right) => right.score - left.score)
+    .filter((candidate) => {
+      const key = canonicalPageUrl(candidate.url);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function canonicalPageUrl(url: string) {
+  const parsed = new URL(url);
+  return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "") || "/"}`;
+}
+
+function linkLabel(origin: string, url: string, text: string) {
+  const pathname = new URL(url).pathname.replace(/\/+$/, "") || "/";
+  return pathname === "/" ? "/" : pathname || text || origin;
+}
+
+function normalizeLinkText(value: string) {
+  return value.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 type GoogleAdsTransparencyResult = {

@@ -9,6 +9,12 @@ import { collectWebsite, inferWebsiteUrl } from "@/lib/research/collectors/websi
 import { generateResearchReport } from "@/lib/research/report/html-generator";
 import { statusLabels, taskStatuses, type TaskStatus } from "@/lib/research/status";
 
+const appStoreSourceTypes = ["APP_STORE", "APP_STORE_VERSION_HISTORY", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"];
+const googlePlaySourceTypes = ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"];
+const communitySourceTypes = ["COMMUNITY_YOUTUBE", "COMMUNITY_TIKTOK", "COMMUNITY_REDDIT"];
+export const selectableRecollectSources = ["app_store", "google_play", "google_ads", "meta_ads", "tiktok", "youtube"] as const;
+export type SelectableRecollectSource = (typeof selectableRecollectSources)[number];
+
 async function updateTask(taskId: string, status: TaskStatus, progress: number, errorMessage?: string | null) {
   await prisma.researchTask.update({
     where: { id: taskId },
@@ -34,26 +40,31 @@ export async function runResearchTask(taskId: string) {
 
   await updateTask(taskId, taskStatuses.collectingPricing, 40, null);
   await collectPricing(taskId, websiteUrl);
-  await summarizePricingBenefitsWithDeepSeek(taskId);
 
   await updateTask(taskId, taskStatuses.collectingReviews, 58, null);
   await collectAppStore(taskId, task.appName, task.appStoreUrl);
   await collectGooglePlay(taskId, task.appName, task.googlePlayUrl);
-  await translateAppProfileWithDeepSeek(taskId);
-  await summarizeReviewsWithDeepSeek(taskId);
 
   await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
   await collectCommunityDiscussions(taskId, task.appName, task.keywords);
-  await summarizeCommunityWithDeepSeek(taskId);
 
   await updateTask(taskId, taskStatuses.collectingPromotion, 76, null);
   await collectPromotion(taskId, websiteUrl, task.appName);
+
+  await pauseAfterCollectionOrAnalyze(taskId);
+}
+
+export async function runAnalysisAndReport(taskId: string) {
+  await updateTask(taskId, taskStatuses.analyzing, 88, null);
+  await summarizePricingBenefitsWithDeepSeek(taskId);
+  await translateAppProfileWithDeepSeek(taskId);
+  await summarizeReviewsWithDeepSeek(taskId);
+  await summarizeCommunityWithDeepSeek(taskId);
   await summarizePromotionWithDeepSeek(taskId);
   await summarizePromotionPainPointFitWithDeepSeek(taskId);
   await summarizeCustomerSegmentsWithDeepSeek(taskId);
   await summarizeFeatureAnalysisWithDeepSeek(taskId);
-
-  await updateTask(taskId, taskStatuses.analyzing, 88, null);
+  await prisma.analysisResult.deleteMany({ where: { taskId, analysisType: "ROLLUP" } });
   await createRollupAnalysis(taskId);
 
   await updateTask(taskId, taskStatuses.generatingReport, 96, null);
@@ -68,16 +79,16 @@ export async function runFailedSourcesRetry(taskId: string) {
   const failedTypes = new Set(task.sources.filter((source) => source.status === "FAILED").map((source) => source.sourceType));
 
   if (failedTypes.size === 0) {
-    await regenerateReportAndFinalize(taskId);
+    await runAnalysisAndReport(taskId);
     return;
   }
 
   const websiteUrl = inferWebsiteUrl(task.appName, task.websiteUrl);
   const retryWebsite = failedTypes.has("WEBSITE");
   const retryPricing = failedTypes.has("PRICING");
-  const retryAppStore = ["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"].some((type) => failedTypes.has(type));
-  const retryGooglePlay = ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"].some((type) => failedTypes.has(type));
-  const retryCommunity = failedTypes.has("COMMUNITY_YOUTUBE");
+  const retryAppStore = appStoreSourceTypes.some((type) => failedTypes.has(type));
+  const retryGooglePlay = googlePlaySourceTypes.some((type) => failedTypes.has(type));
+  const retryCommunity = communitySourceTypes.some((type) => failedTypes.has(type));
   const retryPromotion = ["PROMOTION", "FACEBOOK_ADS_LIBRARY", "GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"].some((type) => failedTypes.has(type));
 
   if (retryWebsite) {
@@ -90,12 +101,11 @@ export async function runFailedSourcesRetry(taskId: string) {
     await prisma.source.deleteMany({ where: { taskId, sourceType: "PRICING" } });
     await updateTask(taskId, taskStatuses.collectingPricing, 40, null);
     await collectPricing(taskId, websiteUrl);
-    await summarizePricingBenefitsWithDeepSeek(taskId);
   }
 
   if (retryAppStore) {
     await prisma.source.deleteMany({
-      where: { taskId, sourceType: { in: ["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"] } }
+      where: { taskId, sourceType: { in: appStoreSourceTypes } }
     });
     await updateTask(taskId, taskStatuses.collectingReviews, 58, null);
     await collectAppStore(taskId, task.appName, task.appStoreUrl);
@@ -103,7 +113,7 @@ export async function runFailedSourcesRetry(taskId: string) {
 
   if (retryGooglePlay) {
     await prisma.source.deleteMany({
-      where: { taskId, sourceType: { in: ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"] } }
+      where: { taskId, sourceType: { in: googlePlaySourceTypes } }
     });
     await updateTask(taskId, taskStatuses.collectingReviews, 58, null);
     await collectGooglePlay(taskId, task.appName, task.googlePlayUrl);
@@ -111,18 +121,12 @@ export async function runFailedSourcesRetry(taskId: string) {
 
   if (retryCommunity) {
     await prisma.$transaction([
-      prisma.source.deleteMany({ where: { taskId, sourceType: { in: ["COMMUNITY_YOUTUBE", "COMMUNITY_REDDIT"] } } }),
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: communitySourceTypes } } }),
       prisma.communityItem.deleteMany({ where: { taskId } }),
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
     ]);
     await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
     await collectCommunityDiscussions(taskId, task.appName, task.keywords);
-    await summarizeCommunityWithDeepSeek(taskId);
-  }
-
-  if (retryAppStore || retryGooglePlay) {
-    await translateAppProfileWithDeepSeek(taskId);
-    await summarizeReviewsWithDeepSeek(taskId);
   }
 
   if (retryPromotion) {
@@ -134,57 +138,153 @@ export async function runFailedSourcesRetry(taskId: string) {
     });
     await updateTask(taskId, taskStatuses.collectingPromotion, 74, null);
     await collectPromotion(taskId, websiteUrl, task.appName);
-    await summarizePromotionWithDeepSeek(taskId);
   }
 
-  if (retryAppStore || retryGooglePlay || retryPromotion) {
-    await summarizePromotionPainPointFitWithDeepSeek(taskId);
-  }
-
-  await updateTask(taskId, taskStatuses.analyzing, 88, null);
-  await summarizeCustomerSegmentsWithDeepSeek(taskId);
-  await summarizeFeatureAnalysisWithDeepSeek(taskId);
-  await prisma.analysisResult.deleteMany({ where: { taskId, analysisType: "ROLLUP" } });
-  await createRollupAnalysis(taskId);
-
-  await updateTask(taskId, taskStatuses.generatingReport, 96, null);
-  await regenerateReportAndFinalize(taskId);
+  await pauseAfterCollectionOrAnalyze(taskId);
 }
 
 export async function runReviewSourcesRetry(taskId: string) {
   const task = await prisma.researchTask.findUniqueOrThrow({ where: { id: taskId }, include: { sources: true } });
   const failedTypes = new Set(task.sources.filter((source) => source.status === "FAILED").map((source) => source.sourceType));
-  const retryAppStore = ["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"].some((type) => failedTypes.has(type));
-  const retryGooglePlay = ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"].some((type) => failedTypes.has(type));
+  const retryAppStore = appStoreSourceTypes.some((type) => failedTypes.has(type));
+  const retryGooglePlay = googlePlaySourceTypes.some((type) => failedTypes.has(type));
 
   if (!retryAppStore && !retryGooglePlay) {
-    await regenerateReportAndFinalize(taskId);
+    await runAnalysisAndReport(taskId);
     return;
   }
 
   await updateTask(taskId, taskStatuses.collectingReviews, 58, null);
   if (retryAppStore) {
     await prisma.$transaction([
-      prisma.source.deleteMany({ where: { taskId, sourceType: { in: ["APP_STORE", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"] } } }),
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: appStoreSourceTypes } } }),
       prisma.review.deleteMany({ where: { taskId, platform: "Apple App Store" } })
     ]);
     await collectAppStore(taskId, task.appName, task.appStoreUrl);
   }
   if (retryGooglePlay) {
     await prisma.$transaction([
-      prisma.source.deleteMany({ where: { taskId, sourceType: { in: ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"] } } }),
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: googlePlaySourceTypes } } }),
       prisma.review.deleteMany({ where: { taskId, platform: "Google Play Store" } })
     ]);
     await collectGooglePlay(taskId, task.appName, task.googlePlayUrl);
   }
 
-  await translateAppProfileWithDeepSeek(taskId);
-  await summarizeReviewsWithDeepSeek(taskId);
-  await summarizePromotionPainPointFitWithDeepSeek(taskId);
-  await prisma.analysisResult.deleteMany({ where: { taskId, analysisType: "ROLLUP" } });
-  await createRollupAnalysis(taskId);
-  await updateTask(taskId, taskStatuses.generatingReport, 96, null);
-  await regenerateReportAndFinalize(taskId);
+  await pauseAfterCollectionOrAnalyze(taskId);
+}
+
+export async function runSelectedSourcesRetry(taskId: string, sources: SelectableRecollectSource[]) {
+  const selected = new Set(sources);
+  if (!selected.size) {
+    await runAnalysisAndReport(taskId);
+    return;
+  }
+
+  const task = await prisma.researchTask.findUniqueOrThrow({ where: { id: taskId } });
+  const websiteUrl = inferWebsiteUrl(task.appName, task.websiteUrl);
+
+  if (selected.has("app_store")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: appStoreSourceTypes } } }),
+      prisma.review.deleteMany({ where: { taskId, platform: "Apple App Store" } }),
+      prisma.analysisResult.deleteMany({
+        where: {
+          taskId,
+          analysisType: { in: ["APP_STORE_SUMMARY", "APP_STORE_RATINGS", "APP_STORE_VERSION_HISTORY", "DEEPSEEK_REVIEW_SUMMARY", "DEEPSEEK_REVIEW_SUMMARY_ERROR"] }
+        }
+      })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingReviews, 58, null);
+    await collectAppStore(taskId, task.appName, task.appStoreUrl);
+  }
+
+  if (selected.has("google_play")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: googlePlaySourceTypes } } }),
+      prisma.review.deleteMany({ where: { taskId, platform: "Google Play Store" } }),
+      prisma.analysisResult.deleteMany({
+        where: { taskId, analysisType: { in: ["GOOGLE_PLAY_SUMMARY", "GOOGLE_PLAY_RATINGS", "DEEPSEEK_REVIEW_SUMMARY", "DEEPSEEK_REVIEW_SUMMARY_ERROR"] } }
+      })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingReviews, 58, null);
+    await collectGooglePlay(taskId, task.appName, task.googlePlayUrl);
+  }
+
+  if (selected.has("youtube")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: "COMMUNITY_YOUTUBE" } }),
+      prisma.communityItem.deleteMany({ where: { taskId, platform: "YouTube" } }),
+      prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: true, tiktok: false });
+  }
+
+  if (selected.has("tiktok")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: "COMMUNITY_TIKTOK" } }),
+      prisma.communityItem.deleteMany({ where: { taskId, platform: "TikTok" } }),
+      prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: false, tiktok: true });
+  }
+
+  if (selected.has("google_ads")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: ["GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"] } } }),
+      prisma.promotionItem.deleteMany({ where: { taskId, platform: "Google Ads Transparency" } }),
+      prisma.analysisResult.deleteMany({
+        where: {
+          taskId,
+          analysisType: { in: ["DEEPSEEK_PROMOTION_SUMMARY", "DEEPSEEK_PROMOTION_SUMMARY_ERROR", "DEEPSEEK_PROMOTION_PAIN_POINT_FIT", "DEEPSEEK_PROMOTION_PAIN_POINT_FIT_ERROR"] }
+        }
+      })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingPromotion, 76, null);
+    await collectPromotion(taskId, websiteUrl, task.appName, { official: false, meta: false, google: true });
+  }
+
+  if (selected.has("meta_ads")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: "FACEBOOK_ADS_LIBRARY" } }),
+      prisma.promotionItem.deleteMany({ where: { taskId, platform: "Facebook Ads Library" } }),
+      prisma.analysisResult.deleteMany({
+        where: {
+          taskId,
+          analysisType: { in: ["DEEPSEEK_PROMOTION_SUMMARY", "DEEPSEEK_PROMOTION_SUMMARY_ERROR", "DEEPSEEK_PROMOTION_PAIN_POINT_FIT", "DEEPSEEK_PROMOTION_PAIN_POINT_FIT_ERROR"] }
+        }
+      })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingPromotion, 76, null);
+    await collectPromotion(taskId, websiteUrl, task.appName, { official: false, meta: true, google: false });
+  }
+
+  await pauseAfterCollectionOrAnalyze(taskId);
+}
+
+async function pauseAfterCollectionOrAnalyze(taskId: string) {
+  const failedSources = await prisma.source.findMany({
+    where: { taskId, status: "FAILED", sourceType: { not: "COMMUNITY_REDDIT" } },
+    select: { sourceName: true }
+  });
+
+  if (failedSources.length) {
+    const sourceNames = failedSources.map((source) => source.sourceName).join("、");
+    await prisma.researchTask.update({
+      where: { id: taskId },
+      data: {
+        status: taskStatuses.collectionReview,
+        progress: 82,
+        currentStep: statusLabels[taskStatuses.collectionReview],
+        completedAt: null,
+        errorMessage: `采集已完成，但有 ${failedSources.length} 个来源失败：${sourceNames}。请选择“采集缺失内容”或“继续 AI 分析”。`
+      }
+    });
+    return;
+  }
+
+  await runAnalysisAndReport(taskId);
 }
 
 async function regenerateReportAndFinalize(taskId: string) {
@@ -208,7 +308,10 @@ async function regenerateReportAndFinalize(taskId: string) {
   });
 
   const sourceTypes = new Set(taskWithData.sources.filter((source) => source.status === "SUCCESS").map((source) => source.sourceType));
-  const coreSuccessCount = ["WEBSITE", "PRICING", "APP_STORE_REVIEWS", "GOOGLE_PLAY_REVIEWS", "COMMUNITY_YOUTUBE", "PROMOTION"].filter((type) => sourceTypes.has(type)).length;
+  const hasCommunitySuccess = communitySourceTypes.some((type) => sourceTypes.has(type));
+  const coreSuccessCount =
+    ["WEBSITE", "PRICING", "APP_STORE_REVIEWS", "GOOGLE_PLAY_REVIEWS", "PROMOTION"].filter((type) => sourceTypes.has(type)).length +
+    (hasCommunitySuccess ? 1 : 0);
   const failedCount = taskWithData.sources.filter((source) => source.status === "FAILED").length;
   const finalStatus = coreSuccessCount >= 3 && failedCount === 0 ? taskStatuses.completed : taskStatuses.partial;
   const errorMessage =

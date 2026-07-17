@@ -26,13 +26,34 @@ export async function collectGooglePlay(taskId: string, appName: string, provide
       sourceName: "Google Play 应用信息",
       url: app.url,
       status: "SUCCESS",
-      rawContent: JSON.stringify({ appId: app.appId, title: app.title, developer: app.developer, score: app.score, ratings: app.ratings, url: app.url })
+      rawContent: JSON.stringify({
+        appId: app.appId,
+        title: app.title,
+        developer: app.developer,
+        summary: app.summary,
+        description: app.description,
+        recentChanges: app.recentChanges,
+        genre: app.genre,
+        score: app.score,
+        ratings: app.ratings,
+        url: app.url
+      })
     });
     await prisma.analysisResult.create({
       data: {
         taskId,
         analysisType: "GOOGLE_PLAY_SUMMARY",
-        resultJson: JSON.stringify({ appId: app.appId, trackName: app.title, rating: app.score, ratingCount: app.ratings, sourceUrl: app.url })
+        resultJson: JSON.stringify({
+          appId: app.appId,
+          trackName: app.title,
+          summary: app.summary,
+          description: app.description,
+          recentChanges: app.recentChanges,
+          genre: app.genre,
+          rating: app.score,
+          ratingCount: app.ratings,
+          sourceUrl: app.url
+        })
       }
     });
 

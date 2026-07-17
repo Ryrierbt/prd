@@ -17,7 +17,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const task = await prisma.researchTask.findUnique({ where: { id }, select: { id: true } });
+  if (!task) {
+    return NextResponse.json({ error: "任务不存在" }, { status: 404 });
+  }
+
   await prisma.researchTask.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
-

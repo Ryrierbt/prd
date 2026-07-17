@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { recordSource } from "@/lib/research/collectors/sources";
 import { fetchText } from "@/lib/research/utils/fetcher";
 import { parseHtmlPage, splitSentences, uniqueValues } from "@/lib/research/utils/text";
+import * as cheerio from "cheerio";
 
 const featureKeywords = [
   "AI",
@@ -55,6 +56,7 @@ export async function collectWebsite(taskId: string, appName: string, websiteUrl
     const summary = page.description || splitSentences(page.text, 1)[0] || "暂未获取";
     const useCases = inferUseCases(page.text);
     const targetUsers = inferTargetUsers(page.text);
+    const iconUrl = extractWebsiteLogoUrl(rawHtml, websiteUrl);
 
     await prisma.appProfile.upsert({
       where: { taskId },
@@ -64,7 +66,8 @@ export async function collectWebsite(taskId: string, appName: string, websiteUrl
         targetUsers: targetUsers.join("、") || "暂未获取",
         useCases: useCases.join("、") || "暂未获取",
         platforms: inferPlatforms(page.text).join("、") || "暂未获取",
-        features: uniqueValues(matchedFeatures).join("、") || "暂未获取"
+        features: uniqueValues(matchedFeatures).join("、") || "暂未获取",
+        iconUrl
       },
       create: {
         taskId,
@@ -73,7 +76,8 @@ export async function collectWebsite(taskId: string, appName: string, websiteUrl
         targetUsers: targetUsers.join("、") || "暂未获取",
         useCases: useCases.join("、") || "暂未获取",
         platforms: inferPlatforms(page.text).join("、") || "暂未获取",
-        features: uniqueValues(matchedFeatures).join("、") || "暂未获取"
+        features: uniqueValues(matchedFeatures).join("、") || "暂未获取",
+        iconUrl
       }
     });
 
@@ -87,6 +91,34 @@ export async function collectWebsite(taskId: string, appName: string, websiteUrl
       status: "FAILED",
       errorMessage: error instanceof Error ? error.message : "官网采集失败"
     });
+    return null;
+  }
+}
+
+function extractWebsiteLogoUrl(rawHtml: string, websiteUrl: string) {
+  const $ = cheerio.load(rawHtml);
+  const candidates = [
+    $('meta[property="og:logo"]').attr("content"),
+    $('meta[name="msapplication-TileImage"]').attr("content"),
+    $('link[rel*="apple-touch-icon"]').first().attr("href"),
+    $('img[alt*="logo" i]').first().attr("src"),
+    $('img[class*="logo" i]').first().attr("src"),
+    $('img[src*="logo" i]').first().attr("src"),
+    $('img[src*="brand" i]').first().attr("src")
+  ];
+
+  for (const candidate of candidates) {
+    const url = normalizeLogoUrl(candidate, websiteUrl);
+    if (url) return url;
+  }
+  return null;
+}
+
+function normalizeLogoUrl(value: string | undefined, baseUrl: string) {
+  if (!value || value.startsWith("data:")) return null;
+  try {
+    return new URL(value, baseUrl).toString();
+  } catch {
     return null;
   }
 }

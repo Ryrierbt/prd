@@ -4,6 +4,7 @@ const toneByStatus: Record<string, string> = {
   COMPLETED: "completed",
   PARTIAL_COMPLETED: "partial",
   FAILED: "failed",
+  COLLECTION_REVIEW: "partial",
   WAITING: "waiting"
 };
 
