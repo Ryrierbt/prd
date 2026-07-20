@@ -15,6 +15,7 @@ export async function createResearchTask(input: CreateTaskInput) {
           taskStatuses.waiting,
           taskStatuses.identifying,
           taskStatuses.collectingWebsite,
+          taskStatuses.collectingGoogle,
           taskStatuses.collectingPricing,
           taskStatuses.collectingReviews,
           taskStatuses.collectingCommunity,

@@ -99,7 +99,9 @@ export class CollectionAgent {
     };
 
     try {
-      const website = await this.collectWebsite(input, runDirectory, runId);
+      const website = input.skipOfficialWebsiteCollection
+        ? this.websiteFromExistingEvidence(input)
+        : await this.collectWebsite(input, runDirectory, runId);
       await atomicWriteJson(path.join(runDirectory, "website.json"), WebsiteSchema.parse(website));
       const searchPlan = await this.generateSearchPlan(website, input);
       await atomicWriteJson(path.join(runDirectory, "search-plan.json"), SearchPlanSchema.parse(searchPlan));
@@ -141,6 +143,30 @@ export class CollectionAgent {
     } finally {
       await browser.close();
     }
+  }
+
+  private websiteFromExistingEvidence(input: ValidatedInput): WebsiteData {
+    if (!input.officialWebsiteEvidence?.trim()) throw new Error("Existing official website evidence is required when website collection is skipped");
+    return WebsiteSchema.parse({
+      officialProductName: null,
+      brandAliases: [],
+      positioning: null,
+      categories: [],
+      targetUsers: [],
+      coreFeatures: [],
+      useCases: [],
+      supportedPlatforms: [],
+      pricingModel: null,
+      keySellingPoints: [],
+      mentionedCompetitorsOrAlternatives: [],
+      officialWebsiteUrl: input.officialWebsite,
+      collectedAt: this.now().toISOString(),
+      rawPageText: input.officialWebsiteEvidence,
+      officialPages: [],
+      pricingPlans: [],
+      officialPromotions: [],
+      screenshotPath: ""
+    });
   }
 
   private async generateSearchPlan(website: WebsiteData, input: ValidatedInput): Promise<SearchPlan> {

@@ -5,7 +5,7 @@ import { joinUrl, parseHtmlPage, uniqueValues } from "@/lib/research/utils/text"
 
 const planNames = ["Free", "Basic", "Pro", "Business", "Enterprise"];
 
-export async function collectPricing(taskId: string, websiteUrl: string | null) {
+export async function collectPricing(taskId: string, websiteUrl: string | null, options: { reuseExistingWebsite?: boolean } = {}) {
   if (!websiteUrl) {
     await recordSource({
       taskId,
@@ -20,8 +20,12 @@ export async function collectPricing(taskId: string, websiteUrl: string | null) 
 
   const pricingUrl = joinUrl(websiteUrl, "/pricing");
   try {
-    const rawHtml = await fetchText(pricingUrl, { retries: 1 });
-    const page = parseHtmlPage(pricingUrl, rawHtml);
+    const existingWebsite = options.reuseExistingWebsite
+      ? await prisma.source.findFirst({ where: { taskId, sourceType: "WEBSITE", status: "SUCCESS" }, orderBy: { fetchedAt: "desc" } })
+      : null;
+    if (options.reuseExistingWebsite && !existingWebsite?.rawContent) throw new Error("没有可复用的官网成功数据，无法重新采集收费模式。");
+    const rawHtml = existingWebsite?.rawContent ?? await fetchText(pricingUrl, { retries: 1 });
+    const page = existingWebsite ? { text: existingWebsite.rawContent ?? "", title: "官网成功数据", description: "", fetchedAt: existingWebsite.fetchedAt ?? new Date() } : parseHtmlPage(pricingUrl, rawHtml);
     const rawContent = `${page.title}\n${page.description}\n${page.text}`;
     const plans = extractPricingPlans(page.text, pricingUrl, page.fetchedAt);
 

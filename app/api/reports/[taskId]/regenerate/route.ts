@@ -13,6 +13,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ta
       reviews: true,
       promotions: true,
       communityItems: true,
+      googleResearchItems: true,
       analyses: true
     }
   });

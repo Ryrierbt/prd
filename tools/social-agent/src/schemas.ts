@@ -25,6 +25,8 @@ export const InputSchema = z.object({
   platforms: z.array(PlatformSchema).min(1).transform((xs) => [...new Set(xs)]),
   maxItemsPerPlatform: z.number().int().min(1).max(5).default(5),
   maxCommentsPerItem: z.number().int().min(1).max(10).default(10),
+  skipOfficialWebsiteCollection: z.boolean().default(false),
+  officialWebsiteEvidence: z.string().optional(),
   browser: BrowserConfigSchema.default({
     mode: "isolated",
     connection: "auto",

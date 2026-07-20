@@ -27,6 +27,7 @@ model ResearchTask {
   reviews        Review[]
   promotions     PromotionItem[]
   communityItems CommunityItem[]
+  googleResearchItems GoogleResearchItem[]
   analyses       AnalysisResult[]
   report         Report?
 
@@ -135,6 +136,24 @@ model CommunityItem {
   @@index([taskId])
   @@index([platform])
   @@index([itemType])
+}
+
+model GoogleResearchItem {
+  id          String       @id @default(cuid())
+  taskId      String
+  dimension   String
+  query       String
+  title       String
+  sourceUrl   String
+  source      String?
+  publishedAt String?
+  snippet     String?
+  content     String
+  fetchedAt   DateTime     @default(now())
+  task        ResearchTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([dimension])
 }
 
 model AnalysisResult {

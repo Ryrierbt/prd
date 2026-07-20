@@ -9,6 +9,7 @@ type ReportTask = Prisma.ResearchTaskGetPayload<{
     reviews: true;
     promotions: true;
     communityItems: true;
+    googleResearchItems: true;
     analyses: true;
   };
 }>;
@@ -29,6 +30,7 @@ export function generateResearchReport(task: ReportTask) {
   const deepSeekFeatureAnalysis = readAnalysis(task, "DEEPSEEK_FEATURE_ANALYSIS");
   const deepSeekCustomerSegments = readAnalysis(task, "DEEPSEEK_CUSTOMER_SEGMENTS");
   const deepSeekCustomerSegmentsError = readAnalysis(task, "DEEPSEEK_CUSTOMER_SEGMENTS_ERROR");
+  const googleResearch = readGoogleResearchAnalyses(task);
   const deepSeekCommunitySummary = readAnalysis(task, "DEEPSEEK_COMMUNITY_SUMMARY");
   const deepSeekCommunityError = readAnalysis(task, "DEEPSEEK_COMMUNITY_SUMMARY_ERROR");
   const supportedPlatforms = supportPlatformsValue(task, deepSeekProfileTranslation);
@@ -270,8 +272,17 @@ export function generateResearchReport(task: ReportTask) {
     .community-content{display:flex;flex-direction:column;gap:7px;border:1px solid #d8e2f3;border-radius:8px;background:#f8fbff;padding:13px;min-width:0}
     .community-content-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
     .community-content-meta{margin-top:auto;color:#64748b;font-size:12px;overflow-wrap:anywhere}
+    .google-research-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .google-research-card{border:1px solid #d8e2f3;border-radius:8px;background:#f8fbff;padding:14px;min-width:0}
+    .google-research-card h3{margin:0 0 6px;color:#1e3a8a;font-size:16px}
+    .google-research-card p{margin:5px 0;color:#475569;font-size:13px;line-height:1.55}
+    .google-research-card ul{margin:8px 0 0;padding-left:18px;color:#334155;font-size:13px}
+    .google-research-card li{margin:4px 0}
+    .google-research-evidence{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;padding-top:9px;border-top:1px solid #d8e2f3}
+    .google-research-evidence a{padding:2px 6px;border:1px solid #c9daf5;border-radius:4px;background:#fff;color:#2563eb;font-size:11px;text-decoration:none}
+    .google-research-evidence a:hover{background:#eff6ff}
     @media(max-width:1100px){.review-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.insight-grid,.review-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:1100px){.promotion-signal-grid,.promotion-strategy-grid,.promotion-painpoint-grid,.promotion-material-grid,.community-analysis-grid,.community-content-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:1100px){.promotion-signal-grid,.promotion-strategy-grid,.promotion-painpoint-grid,.promotion-material-grid,.community-analysis-grid,.community-content-grid,.google-research-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:860px){.layout{display:block}nav{position:static;height:auto}.report-scope,.info-grid,.review-metrics,.review-platform-sources{grid-template-columns:repeat(2,minmax(0,1fr))}.report-scope-item:nth-child(2n){border-right:0}.report-scope-item:nth-child(n+3){border-top:1px solid #d8e2f3}main{padding:18px}.feature-row,.feature-feedback,.customer-cards,.customer-detail-grid,.review-grid,.insight-grid,.review-card-grid,.promotion-overview-grid,.promotion-signal-grid,.promotion-strategy-grid,.promotion-painpoint-grid,.promotion-material-grid,.community-top-grid,.community-analysis-grid,.community-content-grid{grid-template-columns:1fr}.feature-label{padding-bottom:0}.feature-item summary{align-items:flex-start;flex-wrap:wrap}.feature-item summary::after{width:100%;margin-left:0}.customer-card-title,.review-head,.review-tabs-head{display:block}.customer-badges,.review-actions{margin-top:8px;justify-content:flex-start}.sentiment-layout{grid-template-columns:1fr}.sentiment-donut{margin:auto}.review-summary-overview{grid-template-columns:38px 1fr}.review-summary-overview .badge{grid-column:2}}
   </style>
 </head>
@@ -282,6 +293,7 @@ export function generateResearchReport(task: ReportTask) {
       <a class="active" href="#overview">报告概览</a>
       <a href="#profile">基础信息</a>
       <a href="#features">功能分析</a>
+      <a href="#google-research">Google 行业研究</a>
       <a href="#reviews">用户评价</a>
       <a href="#promotion">广告和推广</a>
       <a href="#community">社区分析</a>
@@ -319,6 +331,10 @@ export function generateResearchReport(task: ReportTask) {
       <section id="features">
         <h2>功能分析</h2>
         ${renderDeepSeekFeatureAnalysis(deepSeekFeatureAnalysis, task.appProfile?.features)}
+      </section>
+
+      <section id="google-research">
+        ${renderGoogleResearchSection(googleResearch, task.googleResearchItems)}
       </section>
 
       <section id="reviews">
@@ -1052,6 +1068,52 @@ function readAnalysis(task: ReportTask, analysisType: string) {
   } catch {
     return null;
   }
+}
+
+type GoogleResearchItem = ReportTask["googleResearchItems"][number];
+
+const googleResearchDimensionLabels: Record<string, string> = {
+  industry_trends: "行业趋势",
+  technology_changes: "技术变化",
+  competitor_movements: "竞品动态",
+  user_demand_changes: "用户需求变化"
+};
+
+function readGoogleResearchAnalyses(task: ReportTask) {
+  return Object.keys(googleResearchDimensionLabels).map((dimension) => ({
+    dimension,
+    label: googleResearchDimensionLabels[dimension],
+    summary: readAnalysis(task, `DEEPSEEK_GOOGLE_RESEARCH_${dimension.toUpperCase()}`),
+    error: readAnalysis(task, `DEEPSEEK_GOOGLE_RESEARCH_${dimension.toUpperCase()}_ERROR`)
+  }));
+}
+
+function renderGoogleResearchSection(analyses: ReturnType<typeof readGoogleResearchAnalyses>, items: GoogleResearchItem[]) {
+  const total = items.length;
+  return `<div class="google-research-module"><h2>Google 行业研究</h2><p class="muted">基于 Google 公开文章，按四个维度分别分析；共采集 ${total} 篇文章，每个维度独立调用一次 AI。</p><div class="google-research-grid">${analyses.map((entry) => {
+    const summary = entry.summary;
+    const error = textValue(entry.error?.message);
+    const dimensionItems = items.filter((item) => item.dimension === entry.dimension);
+    if (!summary) {
+      return `<article class="google-research-card"><h3>${escapeHtml(entry.label)}</h3><p class="muted">${escapeHtml(error || (dimensionItems.length ? "该维度暂未生成分析。" : "该维度暂无可用文章。"))}</p>${renderGoogleResearchArticleLinks(dimensionItems)}</article>`;
+    }
+    const findings = stringArray(summary.keyFindings).slice(0, 6);
+    const implications = stringArray(summary.implications).slice(0, 4);
+    return `<article class="google-research-card"><h3>${escapeHtml(textValue(summary.title) || entry.label)}</h3><p>${escapeHtml(textValue(summary.summary))}</p>${findings.length ? `<strong>关键发现</strong><ul>${findings.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${implications.length ? `<strong>产品启示</strong><ul>${implications.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}${renderGoogleResearchEvidence(summary.evidence, dimensionItems)}</article>`;
+  }).join("")}</div></div>`;
+}
+
+function renderGoogleResearchArticleLinks(items: GoogleResearchItem[]) {
+  if (!items.length) return "";
+  return `<div class="google-research-evidence"><span class="muted">采集文章：</span>${items.slice(0, 8).map((item, index) => `<a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer" title="${escapeHtml(item.title)}">原文 ${index + 1}</a>`).join("")}</div>`;
+}
+
+function renderGoogleResearchEvidence(value: unknown, items: GoogleResearchItem[]) {
+  if (!Array.isArray(value)) return renderGoogleResearchArticleLinks(items);
+  const indexes = value.flatMap((entry) => entry && typeof entry === "object" && Array.isArray((entry as Record<string, unknown>).articleIndexes) ? (entry as Record<string, unknown>).articleIndexes as unknown[] : []).map(Number).filter((index) => Number.isInteger(index) && index > 0);
+  const uniqueIndexes = Array.from(new Set(indexes)).filter((index) => items[index - 1]);
+  if (!uniqueIndexes.length) return renderGoogleResearchArticleLinks(items);
+  return `<div class="google-research-evidence"><span class="muted">证据出处：</span>${uniqueIndexes.map((index) => `<a href="${escapeHtml(items[index - 1].sourceUrl)}" target="_blank" rel="noreferrer" title="${escapeHtml(items[index - 1].title)}">文章 ${index}</a>`).join("")}</div>`;
 }
 
 function reportAnalysisModel(task: ReportTask) {

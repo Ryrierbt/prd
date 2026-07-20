@@ -15,12 +15,14 @@ type PromotionCollectOptions = {
   official?: boolean;
   meta?: boolean;
   google?: boolean;
+  reuseExistingWebsite?: boolean;
 };
 
 export async function collectPromotion(taskId: string, websiteUrl: string | null, appName: string, options: PromotionCollectOptions = {}) {
   const collectOfficial = options.official ?? true;
   const collectMeta = options.meta ?? true;
   const collectGoogle = options.google ?? true;
+  const reuseExistingWebsite = options.reuseExistingWebsite ?? false;
 
   if (collectOfficial && collectMeta && collectGoogle) {
     await prisma.promotionItem.deleteMany({ where: { taskId } });
@@ -53,7 +55,19 @@ export async function collectPromotion(taskId: string, websiteUrl: string | null
   const origin = websiteUrl ? getOriginUrl(websiteUrl) : null;
   const items = [];
 
-  if (origin && collectOfficial) {
+  if (origin && collectOfficial && reuseExistingWebsite) {
+    const existingWebsite = await prisma.source.findFirst({ where: { taskId, sourceType: "WEBSITE", status: "SUCCESS" }, orderBy: { fetchedAt: "desc" } });
+    if (!existingWebsite?.rawContent) {
+      await recordSource({ taskId, sourceType: "PROMOTION", sourceName: "官网推广内容", url: websiteUrl ?? "about:blank", status: "FAILED", errorMessage: "没有可复用的官网成功数据，无法重新采集官网推广内容。" });
+    } else {
+      const text = existingWebsite.rawContent;
+      const content = truncate(text, 1000);
+      const item = await prisma.promotionItem.create({ data: { taskId, platform: "Official Website", title: "官网成功数据", content, targetAudience: inferAudience(text).join("、") || "暂未获取", useCase: inferUseCase(text).join("、") || "暂未获取", sellingPoints: extractSellingPoints(text).join("、") || "暂未获取", sourceUrl: existingWebsite.url, fetchedAt: existingWebsite.fetchedAt ?? new Date() } });
+      items.push(item);
+      await recordSource({ taskId, sourceType: "PROMOTION", sourceName: "官网推广内容（复用已采集官网）", url: existingWebsite.url, status: "SUCCESS", rawContent: text, fetchedAt: existingWebsite.fetchedAt ?? new Date() });
+    }
+  }
+  if (origin && collectOfficial && !reuseExistingWebsite) {
     const pageCandidates = await discoverOfficialPromotionPages(origin);
     for (const candidate of pageCandidates) {
       const url = candidate.url;

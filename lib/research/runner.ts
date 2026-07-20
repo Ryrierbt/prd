@@ -1,18 +1,19 @@
 import { prisma } from "@/lib/db";
 import { collectAppStore } from "@/lib/research/collectors/app-store";
 import { collectGooglePlay } from "@/lib/research/collectors/google-play";
-import { summarizeCommunityWithDeepSeek, summarizeCustomerSegmentsWithDeepSeek, summarizeFeatureAnalysisWithDeepSeek, summarizePricingBenefitsWithDeepSeek, summarizePromotionPainPointFitWithDeepSeek, summarizePromotionWithDeepSeek, summarizeReviewsWithDeepSeek, translateAppProfileWithDeepSeek } from "@/lib/research/analysis/deepseek";
+import { summarizeCommunityWithDeepSeek, summarizeCustomerSegmentsWithDeepSeek, summarizeFeatureAnalysisWithDeepSeek, summarizeGoogleResearchWithDeepSeek, summarizePricingBenefitsWithDeepSeek, summarizePromotionPainPointFitWithDeepSeek, summarizePromotionWithDeepSeek, summarizeReviewsWithDeepSeek, translateAppProfileWithDeepSeek } from "@/lib/research/analysis/deepseek";
 import { collectCommunityDiscussions } from "@/lib/research/collectors/community";
 import { collectPricing } from "@/lib/research/collectors/pricing";
 import { collectPromotion } from "@/lib/research/collectors/promotion";
 import { collectWebsite, inferWebsiteUrl } from "@/lib/research/collectors/website";
+import { collectGoogleResearch, googleResearchSourceTypes } from "@/lib/research/collectors/google-research";
 import { generateResearchReport } from "@/lib/research/report/html-generator";
 import { statusLabels, taskStatuses, type TaskStatus } from "@/lib/research/status";
 
 const appStoreSourceTypes = ["APP_STORE", "APP_STORE_VERSION_HISTORY", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"];
 const googlePlaySourceTypes = ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"];
 const communitySourceTypes = ["COMMUNITY_YOUTUBE", "COMMUNITY_TIKTOK", "COMMUNITY_REDDIT"];
-export const selectableRecollectSources = ["app_store", "google_play", "google_ads", "meta_ads", "tiktok", "youtube", "reddit"] as const;
+export const selectableRecollectSources = ["app_store", "google_play", "google_research", "google_ads", "meta_ads", "tiktok", "youtube", "reddit"] as const;
 export type SelectableRecollectSource = (typeof selectableRecollectSources)[number];
 
 async function updateTask(taskId: string, status: TaskStatus, progress: number, errorMessage?: string | null) {
@@ -37,6 +38,9 @@ export async function runResearchTask(taskId: string) {
 
   await updateTask(taskId, taskStatuses.collectingWebsite, 22, null);
   await collectWebsite(taskId, task.appName, websiteUrl);
+
+  await updateTask(taskId, taskStatuses.collectingGoogle, 30, null);
+  await collectGoogleResearch(taskId, task.appName, websiteUrl);
 
   await updateTask(taskId, taskStatuses.collectingPricing, 40, null);
   await collectPricing(taskId, websiteUrl);
@@ -64,6 +68,7 @@ export async function runAnalysisAndReport(taskId: string) {
   await summarizePromotionPainPointFitWithDeepSeek(taskId);
   await summarizeCustomerSegmentsWithDeepSeek(taskId);
   await summarizeFeatureAnalysisWithDeepSeek(taskId);
+  await summarizeGoogleResearchWithDeepSeek(taskId);
   await prisma.analysisResult.deleteMany({ where: { taskId, analysisType: "ROLLUP" } });
   await createRollupAnalysis(taskId);
 
@@ -85,6 +90,7 @@ export async function runFailedSourcesRetry(taskId: string) {
 
   const websiteUrl = inferWebsiteUrl(task.appName, task.websiteUrl);
   const retryWebsite = failedTypes.has("WEBSITE");
+  const retryGoogleResearch = Object.values(googleResearchSourceTypes).some((type) => failedTypes.has(type));
   const retryPricing = failedTypes.has("PRICING");
   const retryAppStore = appStoreSourceTypes.some((type) => failedTypes.has(type));
   const retryGooglePlay = googlePlaySourceTypes.some((type) => failedTypes.has(type));
@@ -97,10 +103,20 @@ export async function runFailedSourcesRetry(taskId: string) {
     await collectWebsite(taskId, task.appName, websiteUrl);
   }
 
+  if (retryGoogleResearch) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: Object.values(googleResearchSourceTypes) } } }),
+      prisma.googleResearchItem.deleteMany({ where: { taskId } }),
+      prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { startsWith: "DEEPSEEK_GOOGLE_RESEARCH_" } } })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingGoogle, 30, null);
+    await collectGoogleResearch(taskId, task.appName, websiteUrl);
+  }
+
   if (retryPricing) {
     await prisma.source.deleteMany({ where: { taskId, sourceType: "PRICING" } });
     await updateTask(taskId, taskStatuses.collectingPricing, 40, null);
-    await collectPricing(taskId, websiteUrl);
+    await collectPricing(taskId, websiteUrl, { reuseExistingWebsite: true });
   }
 
   if (retryAppStore) {
@@ -126,7 +142,7 @@ export async function runFailedSourcesRetry(taskId: string) {
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
     ]);
     await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
-    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { websiteUrl });
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { websiteUrl, reuseExistingWebsite: true });
   }
 
   if (retryPromotion) {
@@ -137,7 +153,7 @@ export async function runFailedSourcesRetry(taskId: string) {
       }
     });
     await updateTask(taskId, taskStatuses.collectingPromotion, 74, null);
-    await collectPromotion(taskId, websiteUrl, task.appName);
+    await collectPromotion(taskId, websiteUrl, task.appName, { reuseExistingWebsite: true });
   }
 
   await pauseAfterCollectionOrAnalyze(taskId);
@@ -210,6 +226,16 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
     await collectGooglePlay(taskId, task.appName, task.googlePlayUrl);
   }
 
+  if (selected.has("google_research")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: Object.values(googleResearchSourceTypes) } } }),
+      prisma.googleResearchItem.deleteMany({ where: { taskId } }),
+      prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { startsWith: "DEEPSEEK_GOOGLE_RESEARCH_" } } })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingGoogle, 30, null);
+    await collectGoogleResearch(taskId, task.appName, websiteUrl);
+  }
+
   if (selected.has("youtube")) {
     await prisma.$transaction([
       prisma.source.deleteMany({ where: { taskId, sourceType: "COMMUNITY_YOUTUBE" } }),
@@ -217,7 +243,7 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
     ]);
     await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
-    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: true, reddit: false, tiktok: false, websiteUrl });
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: true, reddit: false, tiktok: false, websiteUrl, reuseExistingWebsite: true });
   }
 
   if (selected.has("tiktok")) {
@@ -227,7 +253,7 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
     ]);
     await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
-    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: false, reddit: false, tiktok: true, websiteUrl });
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: false, reddit: false, tiktok: true, websiteUrl, reuseExistingWebsite: true });
   }
 
   if (selected.has("reddit")) {
@@ -237,7 +263,7 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
     ]);
     await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
-    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: false, reddit: true, tiktok: false, websiteUrl });
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: false, reddit: true, tiktok: false, websiteUrl, reuseExistingWebsite: true });
   }
 
   if (selected.has("google_ads")) {
@@ -252,7 +278,7 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
       })
     ]);
     await updateTask(taskId, taskStatuses.collectingPromotion, 76, null);
-    await collectPromotion(taskId, websiteUrl, task.appName, { official: false, meta: false, google: true });
+    await collectPromotion(taskId, websiteUrl, task.appName, { official: false, meta: false, google: true, reuseExistingWebsite: true });
   }
 
   if (selected.has("meta_ads")) {
@@ -267,7 +293,7 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
       })
     ]);
     await updateTask(taskId, taskStatuses.collectingPromotion, 76, null);
-    await collectPromotion(taskId, websiteUrl, task.appName, { official: false, meta: true, google: false });
+    await collectPromotion(taskId, websiteUrl, task.appName, { official: false, meta: true, google: false, reuseExistingWebsite: true });
   }
 
   await pauseAfterCollectionOrAnalyze(taskId);
@@ -307,6 +333,7 @@ async function regenerateReportAndFinalize(taskId: string) {
       reviews: true,
       promotions: true,
       communityItems: true,
+      googleResearchItems: true,
       analyses: true
     }
   });
@@ -348,18 +375,20 @@ async function resetTaskData(taskId: string) {
     prisma.review.deleteMany({ where: { taskId } }),
     prisma.promotionItem.deleteMany({ where: { taskId } }),
     prisma.communityItem.deleteMany({ where: { taskId } }),
+    prisma.googleResearchItem.deleteMany({ where: { taskId } }),
     prisma.analysisResult.deleteMany({ where: { taskId } }),
     prisma.report.deleteMany({ where: { taskId } })
   ]);
 }
 
 async function createRollupAnalysis(taskId: string) {
-  const [sources, reviews, pricingPlans, promotions, communityItems] = await Promise.all([
+  const [sources, reviews, pricingPlans, promotions, communityItems, googleResearchItems] = await Promise.all([
     prisma.source.findMany({ where: { taskId } }),
     prisma.review.findMany({ where: { taskId } }),
     prisma.pricingPlan.findMany({ where: { taskId } }),
     prisma.promotionItem.findMany({ where: { taskId } }),
-    prisma.communityItem.findMany({ where: { taskId } })
+    prisma.communityItem.findMany({ where: { taskId } }),
+    prisma.googleResearchItem.findMany({ where: { taskId } })
   ]);
 
   const reviewCategories = reviews.reduce<Record<string, number>>((acc, review) => {
@@ -383,6 +412,7 @@ async function createRollupAnalysis(taskId: string) {
         pricingPlanCount: pricingPlans.length,
         promotionItemCount: promotions.length,
         communityItemCount: communityItems.length,
+        googleResearchItemCount: googleResearchItems.length,
         generatedAt: new Date().toISOString()
       })
     }

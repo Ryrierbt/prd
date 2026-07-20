@@ -18,6 +18,7 @@ type CommunityCollectOptions = {
   reddit?: boolean;
   tiktok?: boolean;
   websiteUrl?: string | null;
+  reuseExistingWebsite?: boolean;
 };
 
 type SocialAgentRunResult = {
@@ -157,7 +158,7 @@ export async function collectCommunityDiscussions(taskId: string, appName: strin
       data: { currentStep: `正在使用社媒采集 agent 收集 ${platformNames.join("、")} 公开讨论。` }
     });
 
-    const run = await runSocialAgent(taskId, appName, keywords, platforms, options.websiteUrl);
+    const run = await runSocialAgent(taskId, appName, keywords, platforms, options.websiteUrl, options.reuseExistingWebsite);
     const items = await readSocialAgentItems(run, platforms);
     if (items.length) {
       await prisma.communityItem.createMany({ data: items.map((item) => ({ ...item, taskId })) });
@@ -198,12 +199,17 @@ async function runSocialAgent(
   appName: string,
   keywords: string | null | undefined,
   platforms: SocialPlatform[],
-  websiteUrl?: string | null
+  websiteUrl?: string | null,
+  reuseExistingWebsite = false
 ) {
   const command = await socialAgentCommand();
   await fs.mkdir(socialAgentRuntimeDirectory, { recursive: true });
 
   const apiKey = await getDeepSeekApiKey();
+  const existingWebsite = reuseExistingWebsite
+    ? await prisma.source.findFirst({ where: { taskId, sourceType: "WEBSITE", status: "SUCCESS" }, orderBy: { fetchedAt: "desc" } })
+    : null;
+  if (reuseExistingWebsite && !existingWebsite?.rawContent) throw new Error("没有可复用的官网成功数据，无法重新采集社区内容。");
   const inputPath = path.join(socialAgentRuntimeDirectory, `${taskId}-${Date.now()}.json`);
   const input = {
     appName,
@@ -214,7 +220,9 @@ async function runSocialAgent(
     maxItemsPerPlatform: normalizeLimit(process.env.SOCIAL_AGENT_MAX_ITEMS_PER_PLATFORM, 5, 5),
     maxCommentsPerItem: normalizeLimit(process.env.SOCIAL_AGENT_MAX_COMMENTS_PER_ITEM, 10, 10),
     browser: socialAgentBrowserConfig(),
-    keywords: cleanText(keywords, 240) || undefined
+    keywords: cleanText(keywords, 240) || undefined,
+    skipOfficialWebsiteCollection: reuseExistingWebsite,
+    officialWebsiteEvidence: existingWebsite?.rawContent || undefined
   };
   await fs.writeFile(inputPath, JSON.stringify(input, null, 2), "utf8");
 
