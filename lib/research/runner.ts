@@ -6,13 +6,14 @@ import { collectCommunityDiscussions } from "@/lib/research/collectors/community
 import { collectPricing } from "@/lib/research/collectors/pricing";
 import { collectPromotion } from "@/lib/research/collectors/promotion";
 import { collectWebsite, inferWebsiteUrl } from "@/lib/research/collectors/website";
-import { collectGoogleResearch, googleResearchSourceTypes } from "@/lib/research/collectors/google-research";
+import { collectGoogleResearch, googlePerformanceSourceType, googleResearchSourceTypes } from "@/lib/research/collectors/google-research";
 import { generateResearchReport } from "@/lib/research/report/html-generator";
 import { statusLabels, taskStatuses, type TaskStatus } from "@/lib/research/status";
 
 const appStoreSourceTypes = ["APP_STORE", "APP_STORE_VERSION_HISTORY", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"];
 const googlePlaySourceTypes = ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"];
 const communitySourceTypes = ["COMMUNITY_YOUTUBE", "COMMUNITY_TIKTOK", "COMMUNITY_REDDIT"];
+const googleResearchSourceTypeList = [...Object.values(googleResearchSourceTypes), googlePerformanceSourceType];
 export const selectableRecollectSources = ["app_store", "google_play", "google_research", "google_ads", "meta_ads", "tiktok", "youtube", "reddit"] as const;
 export type SelectableRecollectSource = (typeof selectableRecollectSources)[number];
 
@@ -90,7 +91,7 @@ export async function runFailedSourcesRetry(taskId: string) {
 
   const websiteUrl = inferWebsiteUrl(task.appName, task.websiteUrl);
   const retryWebsite = failedTypes.has("WEBSITE");
-  const retryGoogleResearch = Object.values(googleResearchSourceTypes).some((type) => failedTypes.has(type));
+  const retryGoogleResearch = googleResearchSourceTypeList.some((type) => failedTypes.has(type));
   const retryPricing = failedTypes.has("PRICING");
   const retryAppStore = appStoreSourceTypes.some((type) => failedTypes.has(type));
   const retryGooglePlay = googlePlaySourceTypes.some((type) => failedTypes.has(type));
@@ -105,7 +106,7 @@ export async function runFailedSourcesRetry(taskId: string) {
 
   if (retryGoogleResearch) {
     await prisma.$transaction([
-      prisma.source.deleteMany({ where: { taskId, sourceType: { in: Object.values(googleResearchSourceTypes) } } }),
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: googleResearchSourceTypeList } } }),
       prisma.googleResearchItem.deleteMany({ where: { taskId } }),
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { startsWith: "DEEPSEEK_GOOGLE_RESEARCH_" } } })
     ]);
@@ -228,7 +229,7 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
 
   if (selected.has("google_research")) {
     await prisma.$transaction([
-      prisma.source.deleteMany({ where: { taskId, sourceType: { in: Object.values(googleResearchSourceTypes) } } }),
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: googleResearchSourceTypeList } } }),
       prisma.googleResearchItem.deleteMany({ where: { taskId } }),
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { startsWith: "DEEPSEEK_GOOGLE_RESEARCH_" } } })
     ]);

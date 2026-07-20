@@ -1089,11 +1089,14 @@ function readGoogleResearchAnalyses(task: ReportTask) {
 }
 
 function renderGoogleResearchSection(analyses: ReturnType<typeof readGoogleResearchAnalyses>, items: GoogleResearchItem[]) {
-  const total = items.length;
-  return `<div class="google-research-module"><h2>行业研究</h2><p class="muted">基于 Google 公开文章，按四个维度分别分析；共采集 ${total} 篇文章，每个维度独立调用一次 AI。</p><div class="google-research-grid">${analyses.map((entry) => {
+  const industryItems = items.filter((item) => item.dimension !== "product_performance");
+  const performanceItems = items.filter((item) => item.dimension === "product_performance");
+  const total = industryItems.length;
+  const performanceNote = performanceItems.length ? `另有 ${performanceItems.length} 篇产品性能证据已用于功能分析。` : "";
+  return `<div class="google-research-module"><h2>行业研究</h2><p class="muted">基于 Google 公开文章，按四个维度分别分析；共采集 ${total} 篇行业研究文章，每个维度独立调用一次 AI。${performanceNote}</p><div class="google-research-grid">${analyses.map((entry) => {
     const summary = entry.summary;
     const error = textValue(entry.error?.message);
-    const dimensionItems = items.filter((item) => item.dimension === entry.dimension);
+    const dimensionItems = industryItems.filter((item) => item.dimension === entry.dimension);
     if (!summary) {
       return `<article class="google-research-card"><h3>${escapeHtml(entry.label)}</h3><p class="muted">${escapeHtml(error || (dimensionItems.length ? "该维度暂未生成分析。" : "该维度暂无可用文章。"))}</p>${renderGoogleResearchArticleLinks(dimensionItems)}</article>`;
     }
