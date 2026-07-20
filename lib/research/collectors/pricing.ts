@@ -20,20 +20,25 @@ export async function collectPricing(taskId: string, websiteUrl: string | null, 
 
   const pricingUrl = joinUrl(websiteUrl, "/pricing");
   try {
-    const existingWebsite = options.reuseExistingWebsite
-      ? await prisma.source.findFirst({ where: { taskId, sourceType: "WEBSITE", status: "SUCCESS" }, orderBy: { fetchedAt: "desc" } })
+    const existingPricingPage = options.reuseExistingWebsite
+      ? (await prisma.source.findMany({
+          where: { taskId, sourceType: "WEBSITE_PAGE", status: "SUCCESS" },
+          orderBy: { fetchedAt: "desc" }
+        })).find((source) => Boolean(source.rawContent) && isPricingPage(source.url, source.sourceName))
       : null;
-    if (options.reuseExistingWebsite && !existingWebsite?.rawContent) throw new Error("没有可复用的官网成功数据，无法重新采集收费模式。");
-    const rawHtml = existingWebsite?.rawContent ?? await fetchText(pricingUrl, { retries: 1 });
-    const page = existingWebsite ? { text: existingWebsite.rawContent ?? "", title: "官网成功数据", description: "", fetchedAt: existingWebsite.fetchedAt ?? new Date() } : parseHtmlPage(pricingUrl, rawHtml);
+    const sourceUrl = existingPricingPage?.url ?? pricingUrl;
+    const rawHtml = existingPricingPage?.rawContent ?? await fetchText(pricingUrl, { retries: 1 });
+    const page = existingPricingPage
+      ? { text: existingPricingPage.rawContent ?? "", title: existingPricingPage.sourceName, description: "", fetchedAt: existingPricingPage.fetchedAt ?? new Date() }
+      : parseHtmlPage(pricingUrl, rawHtml);
     const rawContent = `${page.title}\n${page.description}\n${page.text}`;
-    const plans = extractPricingPlans(page.text, pricingUrl, page.fetchedAt);
+    const plans = extractPricingPlans(page.text, sourceUrl, page.fetchedAt);
 
     await recordSource({
       taskId,
       sourceType: "PRICING",
       sourceName: "定价页",
-      url: pricingUrl,
+      url: sourceUrl,
       status: "SUCCESS",
       rawContent,
       errorMessage: undefined,
@@ -55,6 +60,16 @@ export async function collectPricing(taskId: string, websiteUrl: string | null, 
       errorMessage: error instanceof Error ? error.message : "定价页采集失败"
     });
     return [];
+  }
+}
+
+function isPricingPage(url: string, sourceName: string) {
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    const label = sourceName.toLowerCase();
+    return ["pricing", "price", "plans", "plan"].some((keyword) => path.split("/").includes(keyword) || label.includes(keyword));
+  } catch {
+    return false;
   }
 }
 
