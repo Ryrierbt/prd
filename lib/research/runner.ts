@@ -12,7 +12,7 @@ import { statusLabels, taskStatuses, type TaskStatus } from "@/lib/research/stat
 const appStoreSourceTypes = ["APP_STORE", "APP_STORE_VERSION_HISTORY", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"];
 const googlePlaySourceTypes = ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"];
 const communitySourceTypes = ["COMMUNITY_YOUTUBE", "COMMUNITY_TIKTOK", "COMMUNITY_REDDIT"];
-export const selectableRecollectSources = ["app_store", "google_play", "google_ads", "meta_ads", "tiktok", "youtube"] as const;
+export const selectableRecollectSources = ["app_store", "google_play", "google_ads", "meta_ads", "tiktok", "youtube", "reddit"] as const;
 export type SelectableRecollectSource = (typeof selectableRecollectSources)[number];
 
 async function updateTask(taskId: string, status: TaskStatus, progress: number, errorMessage?: string | null) {
@@ -46,7 +46,7 @@ export async function runResearchTask(taskId: string) {
   await collectGooglePlay(taskId, task.appName, task.googlePlayUrl);
 
   await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
-  await collectCommunityDiscussions(taskId, task.appName, task.keywords);
+  await collectCommunityDiscussions(taskId, task.appName, task.keywords, { websiteUrl });
 
   await updateTask(taskId, taskStatuses.collectingPromotion, 76, null);
   await collectPromotion(taskId, websiteUrl, task.appName);
@@ -126,7 +126,7 @@ export async function runFailedSourcesRetry(taskId: string) {
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
     ]);
     await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
-    await collectCommunityDiscussions(taskId, task.appName, task.keywords);
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { websiteUrl });
   }
 
   if (retryPromotion) {
@@ -217,7 +217,7 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
     ]);
     await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
-    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: true, tiktok: false });
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: true, reddit: false, tiktok: false, websiteUrl });
   }
 
   if (selected.has("tiktok")) {
@@ -227,7 +227,17 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
     ]);
     await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
-    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: false, tiktok: true });
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: false, reddit: false, tiktok: true, websiteUrl });
+  }
+
+  if (selected.has("reddit")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: "COMMUNITY_REDDIT" } }),
+      prisma.communityItem.deleteMany({ where: { taskId, platform: "Reddit" } }),
+      prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: ["DEEPSEEK_COMMUNITY_SUMMARY", "DEEPSEEK_COMMUNITY_SUMMARY_ERROR"] } } })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingCommunity, 66, null);
+    await collectCommunityDiscussions(taskId, task.appName, task.keywords, { youtube: false, reddit: true, tiktok: false, websiteUrl });
   }
 
   if (selected.has("google_ads")) {
@@ -265,7 +275,7 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
 
 async function pauseAfterCollectionOrAnalyze(taskId: string) {
   const failedSources = await prisma.source.findMany({
-    where: { taskId, status: "FAILED", sourceType: { not: "COMMUNITY_REDDIT" } },
+    where: { taskId, status: "FAILED" },
     select: { sourceName: true }
   });
 

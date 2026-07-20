@@ -42,10 +42,15 @@ export default async function TasksPage({ searchParams }: { searchParams?: Promi
             <h1>历史任务</h1>
             <p>查看已创建任务、采集状态和报告入口，所有任务按应用分组，便于管理与追踪。</p>
           </div>
-          <Link href="/" className="history-new-task">
-            <span aria-hidden="true">+</span>
-            新建任务
-          </Link>
+          <div className="history-header-actions">
+            <Link href="/compare" className="history-compare-link">
+              横向对比
+            </Link>
+            <Link href="/" className="history-new-task">
+              <span aria-hidden="true">+</span>
+              新建任务
+            </Link>
+          </div>
         </div>
 
         <div className="history-dashboard">

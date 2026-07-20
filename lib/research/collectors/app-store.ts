@@ -37,10 +37,12 @@ export async function collectAppStore(taskId: string, appName: string, providedU
       fetchedAt: new Date()
     });
 
+    const existingProfile = await prisma.appProfile.findUnique({ where: { taskId } });
+    const platforms = uniquePlatforms([...(existingProfile?.platforms?.split(/[、,，\/／;；\n]+/) ?? []), "iOS", "Web"]);
     await prisma.appProfile.upsert({
       where: { taskId },
       update: {
-        platforms: "iOS、Web",
+        platforms: platforms.join("、"),
         summary: truncate(app.description, 800),
         iconUrl: app.icon
       },
@@ -50,7 +52,7 @@ export async function collectAppStore(taskId: string, appName: string, providedU
         positioning: app.title,
         targetUsers: "暂未获取",
         useCases: "暂未获取",
-        platforms: "iOS、Web",
+        platforms: platforms.join("、"),
         features: "暂未获取",
         iconUrl: app.icon
       }
@@ -374,6 +376,34 @@ function appStorePageHeaders(country: string) {
     Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": language
   };
+}
+
+function uniquePlatforms(values: string[]) {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values.map((item) => item.trim()).filter((item) => item && item !== "暂未获取")) {
+    const key = platformKey(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(platformLabel(value));
+  }
+  return output.length ? output : ["iOS", "Web"];
+}
+
+function platformKey(value: string) {
+  const normalized = value.toLowerCase();
+  if (/app\s*store|apple|ios|iphone|ipad|苹果/.test(normalized)) return "ios";
+  if (/google\s*play|谷歌应用|安卓应用|android/.test(normalized)) return "android";
+  if (/web|website|browser|网页|官网/.test(normalized)) return "web";
+  return normalized.replace(/\s+/g, "");
+}
+
+function platformLabel(value: string) {
+  const key = platformKey(value);
+  if (key === "ios") return "iOS";
+  if (key === "android") return "Android";
+  if (key === "web") return "Web";
+  return value;
 }
 
 function reviewCountries() {

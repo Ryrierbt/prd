@@ -1,222 +1,449 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { prisma } from "@/lib/db";
 import { recordSource } from "@/lib/research/collectors/sources";
-import { clearTikTokLoginSignal, tiktokLoginSignalPath } from "@/lib/research/collectors/tiktok-login-signal";
+import { inferWebsiteUrl } from "@/lib/research/collectors/website";
+import { getDeepSeekApiKey } from "@/lib/settings";
 
 const execFileAsync = promisify(execFile);
+const socialAgentDirectory = path.join(process.cwd(), "tools", "social-agent");
+const socialAgentRuntimeDirectory = path.join(process.cwd(), ".runtime", "social-agent");
 
-type CommunityScriptItem = {
-  platform?: string;
-  itemType?: string;
-  title?: string | null;
-  content?: string;
-  author?: string | null;
-  score?: number | null;
-  commentCount?: number | null;
-  publishedAt?: string | null;
-  sourceUrl?: string | null;
-  searchQuery?: string | null;
-  relatedProducts?: string | null;
-};
-
-type CommunityScriptSource = {
-  status?: "SUCCESS" | "FAILED" | "SKIPPED";
-  error?: string | null;
-  items?: CommunityScriptItem[];
-};
-
-type CommunityScriptResult = {
-  queries?: string[];
-  youtube?: CommunityScriptSource;
-  tiktok?: CommunityScriptSource;
-  items?: CommunityScriptItem[];
-};
+type SocialPlatform = "youtube" | "reddit" | "tiktok";
 
 type CommunityCollectOptions = {
   youtube?: boolean;
+  reddit?: boolean;
   tiktok?: boolean;
+  websiteUrl?: string | null;
+};
+
+type SocialAgentRunResult = {
+  runId?: string;
+  runDirectory?: string;
+  summary?: {
+    status?: string;
+    platforms?: Partial<Record<SocialPlatform, SocialAgentPlatformStatus>>;
+  };
+};
+
+type SocialAgentPlatformStatus = {
+  status?: "completed" | "partial" | "blocked" | "failed";
+  candidateCount?: number;
+  selectedCount?: number;
+  commentCount?: number;
+  reasonCode?: string;
+  reason?: string;
+};
+
+type SocialAgentCandidate = {
+  externalId?: string;
+  matchedQuery?: string;
+  matchedQueries?: string[];
+  searchGroupQuery?: string;
+};
+
+type SocialAgentItem = {
+  platform?: SocialPlatform;
+  externalId?: string;
+  title?: string | null;
+  author?: string | null;
+  publishedAt?: string | null;
+  description?: string | null;
+  viewCount?: number | null;
+  likeCount?: number | null;
+  commentCount?: number | null;
+  shareCount?: number | null;
+  tags?: string[];
+  sourceUrl?: string | null;
+  relatedLinks?: string[];
+  subreddit?: string | null;
+  postScore?: number | null;
+  flair?: string | null;
+  body?: string | null;
+  collectionDecision?: {
+    reason?: string;
+    evidence?: string[];
+    evidenceAnalysis?: {
+      detail?: { summary?: string | null; extractedFacts?: string[] };
+      poster?: {
+        available?: boolean;
+        viewpoint?: string | null;
+        summary?: string | null;
+        extractedFacts?: string[];
+      };
+      captions?: { summary?: string | null; extractedFacts?: string[] };
+    };
+  };
+  supplementalEvidence?: {
+    youtubeCaptions?: {
+      captionLanguage?: string | null;
+      captionText?: string | null;
+      reason?: string | null;
+    } | null;
+  };
+};
+
+type SocialAgentComment = {
+  commentId?: string;
+  author?: string | null;
+  content?: string;
+  publishedAt?: string | null;
+  likeCount?: number | null;
+  replyCount?: number | null;
+  commentUrl?: string | null;
+  sentiment?: string;
+  valueScore?: number;
+  selectedReasons?: string[];
+  matchedThemes?: string[];
+};
+
+type CommunityData = {
+  platform: string;
+  itemType: string;
+  title: string | null;
+  content: string;
+  author: string | null;
+  score: number | null;
+  commentCount: number | null;
+  publishedAt: Date | null;
+  sourceUrl: string | null;
+  searchQuery: string | null;
+  relatedProducts: string | null;
+};
+
+const platformLabels: Record<SocialPlatform, string> = {
+  youtube: "YouTube",
+  reddit: "Reddit",
+  tiktok: "TikTok"
+};
+
+const sourceTypes: Record<SocialPlatform, string> = {
+  youtube: "COMMUNITY_YOUTUBE",
+  reddit: "COMMUNITY_REDDIT",
+  tiktok: "COMMUNITY_TIKTOK"
+};
+
+const sourceNames: Record<SocialPlatform, string> = {
+  youtube: "YouTube 视频与评论",
+  reddit: "Reddit 帖子与评论",
+  tiktok: "TikTok 视频与评论"
+};
+
+const sourceUrls: Record<SocialPlatform, string> = {
+  youtube: "https://www.youtube.com/",
+  reddit: "https://www.reddit.com/",
+  tiktok: "https://www.tiktok.com/"
 };
 
 export async function collectCommunityDiscussions(taskId: string, appName: string, keywords?: string | null, options: CommunityCollectOptions = {}) {
-  const collectYouTube = options.youtube ?? true;
-  const collectTikTok = options.tiktok ?? true;
-  if (collectYouTube && collectTikTok) {
-    await prisma.communityItem.deleteMany({ where: { taskId } });
-  } else {
-    await prisma.communityItem.deleteMany({
-      where: {
-        taskId,
-        platform: { in: [collectYouTube ? "YouTube" : "", collectTikTok ? "TikTok" : ""].filter(Boolean) }
-      }
-    });
-  }
+  const platforms = selectedPlatforms(options);
+  const platformNames = platforms.map((platform) => platformLabels[platform]);
 
-  const queries = buildCommunityQueries(appName, keywords);
-  const allItems: NonNullable<ReturnType<typeof normalizeCommunityItem>>[] = [];
+  await prisma.communityItem.deleteMany({
+    where: {
+      taskId,
+      ...(platformNames.length === 3 ? {} : { platform: { in: platformNames } })
+    }
+  });
 
-  if (collectYouTube) {
-    const youtubeResult = await collectYouTubeCommunity(taskId, appName, queries);
-    allItems.push(...youtubeResult);
-  }
-
-  if (collectTikTok) {
-    const tiktokResult = await collectTikTokCommunity(taskId, appName, queries, keywords ?? null);
-    allItems.push(...tiktokResult);
-  }
-
-  if (allItems.length) {
-    await prisma.communityItem.createMany({ data: allItems.map((item) => ({ ...item, taskId })) });
-  }
-  return allItems;
-}
-
-async function collectYouTubeCommunity(taskId: string, appName: string, queries: string[]) {
-  const pythonCommand = process.env.COMMUNITY_DISCUSSIONS_PYTHON || "python3";
-  const scriptPath = path.join(process.cwd(), "scripts", "community_discussions.py");
-  const youtubeVideosPerQuery = normalizeLimit(process.env.COMMUNITY_YOUTUBE_VIDEOS_PER_QUERY, 5, 10);
-  const youtubeVideoLimit = Math.max(normalizeLimit(process.env.COMMUNITY_YOUTUBE_VIDEO_LIMIT, queries.length * youtubeVideosPerQuery, 60), queries.length * youtubeVideosPerQuery);
-  const args = [
-    scriptPath,
-    "--app-name",
-    appName,
-    "--queries-json",
-    JSON.stringify(queries),
-    "--youtube-video-limit",
-    String(youtubeVideoLimit),
-    "--youtube-videos-per-query",
-    String(youtubeVideosPerQuery),
-    "--youtube-comments-per-video",
-    String(normalizeLimit(process.env.COMMUNITY_YOUTUBE_COMMENTS_PER_VIDEO, 20, 20))
-  ];
+  if (!platforms.length) return [];
 
   try {
-    const { stdout } = await execFileAsync(pythonCommand, args, { timeout: 150_000, maxBuffer: 2 * 1024 * 1024 });
-    const result = JSON.parse(stdout) as CommunityScriptResult;
-    await recordCommunitySource(taskId, "COMMUNITY_YOUTUBE", "YouTube 视频与评论", "https://www.youtube.com/", result.youtube, result.queries ?? queries);
-    return normalizeCommunityItems(result.items ?? []);
-  } catch (error) {
-    const errorMessage = processErrorMessage(error, "社区讨论采集失败");
-    await recordSource({ taskId, sourceType: "COMMUNITY_YOUTUBE", sourceName: "YouTube 视频与评论", url: "https://www.youtube.com/", status: "FAILED", errorMessage });
-    return [];
-  }
-}
-
-async function collectTikTokCommunity(taskId: string, appName: string, queries: string[], keywords: string | null) {
-  const nodeCommand = process.env.TIKTOK_COMMENTS_NODE || process.execPath;
-  const scriptPath = path.join(process.cwd(), "scripts", "tiktok_comments.mjs");
-  const videosPerQuery = normalizeLimit(process.env.TIKTOK_VIDEOS_PER_QUERY, 4, 10);
-  const videoLimit = Math.max(normalizeLimit(process.env.TIKTOK_VIDEO_LIMIT, queries.length * videosPerQuery, 60), queries.length * videosPerQuery);
-  const commentsPerVideo = normalizeLimit(process.env.TIKTOK_COMMENTS_PER_VIDEO, 10, 50);
-  const loginSignalFile = tiktokLoginSignalPath(taskId);
-  const loginTimeoutMs = normalizeLimit(process.env.TIKTOK_LOGIN_CONFIRM_TIMEOUT_MS, 600_000, 1_800_000);
-  const collectTimeoutMs = normalizeLimit(process.env.TIKTOK_COLLECT_TIMEOUT_MS, loginTimeoutMs + 300_000, 2_400_000);
-  const args = [
-    scriptPath,
-    "--app-name",
-    appName,
-    "--queries-json",
-    JSON.stringify(queries),
-    "--keywords",
-    keywords ?? "",
-    "--video-limit",
-    String(videoLimit),
-    "--videos-per-query",
-    String(videosPerQuery),
-    "--comments-per-video",
-    String(commentsPerVideo),
-    "--login-signal-file",
-    loginSignalFile,
-    "--login-timeout-ms",
-    String(loginTimeoutMs)
-  ];
-  if (process.env.TIKTOK_PROFILE_URL) args.push("--profile-url", process.env.TIKTOK_PROFILE_URL);
-  if (process.env.TIKTOK_PROFILE_DIR) args.push("--profile-dir", process.env.TIKTOK_PROFILE_DIR);
-  if (process.env.TIKTOK_CHROME_PATH) args.push("--chrome-path", process.env.TIKTOK_CHROME_PATH);
-
-  try {
-    await clearTikTokLoginSignal(taskId);
     await prisma.researchTask.update({
       where: { id: taskId },
-      data: {
-        currentStep: "TikTok 浏览器已打开，请在浏览器中登录或确认已登录，然后点击页面中的“已登录，继续采集 TikTok”。"
-      }
+      data: { currentStep: `正在使用社媒采集 agent 收集 ${platformNames.join("、")} 公开讨论。` }
     });
-    const { stdout } = await execFileAsync(nodeCommand, args, { timeout: collectTimeoutMs, maxBuffer: 8 * 1024 * 1024 });
-    const result = JSON.parse(stdout) as CommunityScriptResult;
-    await recordCommunitySource(taskId, "COMMUNITY_TIKTOK", "TikTok 视频与评论", "https://www.tiktok.com/", result.tiktok ?? result, [appName]);
-    return normalizeCommunityItems(result.items ?? []);
+
+    const run = await runSocialAgent(taskId, appName, keywords, platforms, options.websiteUrl);
+    const items = await readSocialAgentItems(run, platforms);
+    if (items.length) {
+      await prisma.communityItem.createMany({ data: items.map((item) => ({ ...item, taskId })) });
+    }
+    await recordSocialAgentSources(taskId, run, platforms, items);
+    return items;
   } catch (error) {
-    const errorMessage = processErrorMessage(error, "TikTok 评论采集失败");
-    await recordSource({ taskId, sourceType: "COMMUNITY_TIKTOK", sourceName: "TikTok 视频与评论", url: "https://www.tiktok.com/", status: "FAILED", errorMessage });
+    const errorMessage = processErrorMessage(error, "社媒采集 agent 运行失败");
+    await Promise.all(
+      platforms.map((platform) =>
+        recordSource({
+          taskId,
+          sourceType: sourceTypes[platform],
+          sourceName: sourceNames[platform],
+          url: sourceUrls[platform],
+          status: "FAILED",
+          errorMessage
+        })
+      )
+    );
     return [];
-  } finally {
-    await clearTikTokLoginSignal(taskId);
   }
 }
 
-function normalizeCommunityItems(items: CommunityScriptItem[]) {
-  return items.map(normalizeCommunityItem).filter((item): item is NonNullable<typeof item> => Boolean(item));
+function selectedPlatforms(options: CommunityCollectOptions): SocialPlatform[] {
+  const collectYouTube = options.youtube ?? true;
+  const collectReddit = options.reddit ?? true;
+  const collectTikTok = options.tiktok ?? true;
+  return [
+    collectYouTube ? "youtube" : null,
+    collectReddit ? "reddit" : null,
+    collectTikTok ? "tiktok" : null
+  ].filter((platform): platform is SocialPlatform => Boolean(platform));
 }
 
-async function recordCommunitySource(
+async function runSocialAgent(
   taskId: string,
-  sourceType: string,
-  sourceName: string,
-  url: string,
-  source: CommunityScriptSource | undefined,
-  queries: string[]
+  appName: string,
+  keywords: string | null | undefined,
+  platforms: SocialPlatform[],
+  websiteUrl?: string | null
 ) {
-  const status = source?.status ?? "FAILED";
-  const items = source?.items ?? [];
-  await recordSource({
-    taskId,
-    sourceType,
-    sourceName,
-    url,
-    status,
-    rawContent: JSON.stringify({ queries, itemCount: items.length }),
-    errorMessage: source?.error || (status === "FAILED" ? "社区来源未返回结果。" : undefined)
+  const command = await socialAgentCommand();
+  await fs.mkdir(socialAgentRuntimeDirectory, { recursive: true });
+
+  const apiKey = await getDeepSeekApiKey();
+  const inputPath = path.join(socialAgentRuntimeDirectory, `${taskId}-${Date.now()}.json`);
+  const input = {
+    appName,
+    officialWebsite: inferWebsiteUrl(appName, websiteUrl),
+    country: process.env.SOCIAL_AGENT_COUNTRY || "US",
+    language: process.env.SOCIAL_AGENT_LANGUAGE || "en",
+    platforms,
+    maxItemsPerPlatform: normalizeLimit(process.env.SOCIAL_AGENT_MAX_ITEMS_PER_PLATFORM, 5, 5),
+    maxCommentsPerItem: normalizeLimit(process.env.SOCIAL_AGENT_MAX_COMMENTS_PER_ITEM, 10, 10),
+    browser: socialAgentBrowserConfig(),
+    keywords: cleanText(keywords, 240) || undefined
+  };
+  await fs.writeFile(inputPath, JSON.stringify(input, null, 2), "utf8");
+
+  const { stdout } = await execFileAsync(command.bin, command.args(inputPath), {
+    cwd: socialAgentDirectory,
+    timeout: normalizeLimit(process.env.SOCIAL_AGENT_TIMEOUT_MS, 1_800_000, 3_600_000),
+    maxBuffer: 32 * 1024 * 1024,
+    env: {
+      ...process.env,
+      DEEPSEEK_API_KEY: apiKey || process.env.DEEPSEEK_API_KEY || "",
+      DEEPSEEK_BASE_URL: normalizeDeepSeekBaseUrl(process.env.DEEPSEEK_BASE_URL),
+      DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"
+    }
   });
+
+  return parseRunResult(stdout);
 }
 
-function normalizeCommunityItem(item: CommunityScriptItem) {
-  const platform = cleanText(item.platform, 32);
-  const itemType = cleanText(item.itemType, 24);
-  const content = cleanText(item.content, 1400);
-  if (!platform || !itemType || !content) return null;
+async function socialAgentCommand() {
+  const packageJsonPath = path.join(socialAgentDirectory, "package.json");
+  const zodPath = path.join(socialAgentDirectory, "node_modules", "zod", "package.json");
+  const cliPath = path.join(socialAgentDirectory, "dist", "cli.js");
+  const tsxPath = path.join(socialAgentDirectory, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
+  await fs.access(packageJsonPath);
+  try {
+    await fs.access(zodPath);
+  } catch {
+    throw new Error("社媒采集 agent 依赖未安装。请先执行：cd tools/social-agent && npm install");
+  }
+  try {
+    await fs.access(cliPath);
+    return { bin: process.execPath, args: (inputPath: string) => [cliPath, "--input", inputPath] };
+  } catch {
+    try {
+      await fs.access(tsxPath);
+      return { bin: "npm", args: (inputPath: string) => ["run", "collect", "--", "--input", inputPath] };
+    } catch {
+      throw new Error("社媒采集 agent 尚未构建。请执行：cd tools/social-agent && npm run build");
+    }
+  }
+}
+
+function socialAgentBrowserConfig() {
+  const mode = process.env.SOCIAL_AGENT_BROWSER_MODE === "isolated" ? "isolated" : "existing";
+  const cdpEndpoint = process.env.SOCIAL_AGENT_CDP_ENDPOINT || process.env.SOCIAL_AGENT_CDP_PORT || "9333";
+  if (mode === "existing" && cdpEndpoint) {
+    return {
+      mode,
+      connection: "cdp",
+      cdpEndpoint: /^\d+$/.test(cdpEndpoint) ? Number.parseInt(cdpEndpoint, 10) : cdpEndpoint,
+      reuseOpenPages: true,
+      preserveExistingBrowser: true
+    };
+  }
   return {
-    platform,
-    itemType,
-    title: cleanText(item.title, 240) || null,
-    content,
-    author: cleanText(item.author, 160) || null,
-    score: finiteInteger(item.score),
-    commentCount: finiteInteger(item.commentCount),
-    publishedAt: parseDate(item.publishedAt),
-    sourceUrl: cleanUrl(item.sourceUrl),
-    searchQuery: cleanText(item.searchQuery, 360) || null,
-    relatedProducts: cleanText(item.relatedProducts, 360) || null
+    mode,
+    connection: cdpEndpoint ? "cdp" : "auto",
+    ...(cdpEndpoint ? { cdpEndpoint: /^\d+$/.test(cdpEndpoint) ? Number.parseInt(cdpEndpoint, 10) : cdpEndpoint } : {}),
+    reuseOpenPages: true,
+    preserveExistingBrowser: true
   };
 }
 
-function buildCommunityQueries(appName: string, keywords?: string | null) {
-  const context = cleanText(keywords, 120)
-    .split(/[，,;；\n]/)
-    .map((item) => item.trim())
-    .find((item) => item.length >= 3 && item.length <= 70);
-  return Array.from(
-    new Set(
-      [
-        `${appName} review`,
-        `${appName} alternative`,
-        `${appName} vs competitor`,
-        `${appName} alternatives comparison`,
-        context ? `best ${context} alternatives` : ""
-      ].filter(Boolean)
-    )
+function normalizeDeepSeekBaseUrl(value: string | undefined) {
+  const baseUrl = value || "https://api.deepseek.com";
+  return baseUrl.replace(/\/chat\/completions\/?$/i, "").replace(/\/$/, "");
+}
+
+function parseRunResult(stdout: string): SocialAgentRunResult {
+  const trimmed = stdout.trim();
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace < 0 || lastBrace < firstBrace) throw new Error("社媒采集 agent 未返回 JSON 结果");
+  return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)) as SocialAgentRunResult;
+}
+
+async function readSocialAgentItems(run: SocialAgentRunResult, platforms: SocialPlatform[]) {
+  const runDirectory = run.runDirectory ? path.resolve(socialAgentDirectory, run.runDirectory) : null;
+  if (!runDirectory) return [];
+
+  const items: CommunityData[] = [];
+  for (const platform of platforms) {
+    const candidateMap = await readCandidateMap(runDirectory, platform);
+    const platformDirectory = path.join(runDirectory, "items", platform);
+    const itemDirectories = await safeReadDirectory(platformDirectory);
+    for (const itemDirectoryName of itemDirectories) {
+      const itemDirectory = path.join(platformDirectory, itemDirectoryName);
+      const item = await readJson<SocialAgentItem>(path.join(itemDirectory, "item.json"));
+      if (!item) continue;
+      const candidate = item.externalId ? candidateMap.get(item.externalId) : undefined;
+      const normalizedItem = normalizeAgentItem(item, platform, candidate);
+      if (normalizedItem) items.push(normalizedItem);
+
+      const comments = (await readJson<SocialAgentComment[]>(path.join(itemDirectory, "comments.json"))) ?? [];
+      for (const comment of comments) {
+        const normalizedComment = normalizeAgentComment(comment, item, platform, candidate);
+        if (normalizedComment) items.push(normalizedComment);
+      }
+    }
+  }
+  return items;
+}
+
+async function readCandidateMap(runDirectory: string, platform: SocialPlatform) {
+  const candidates = (await readJson<SocialAgentCandidate[]>(path.join(runDirectory, "candidates", `${platform}.json`))) ?? [];
+  const map = new Map<string, SocialAgentCandidate>();
+  for (const candidate of candidates) {
+    if (candidate.externalId) map.set(candidate.externalId, candidate);
+  }
+  return map;
+}
+
+async function safeReadDirectory(directory: string) {
+  try {
+    return await fs.readdir(directory);
+  } catch {
+    return [];
+  }
+}
+
+async function readJson<T>(filePath: string): Promise<T | null> {
+  try {
+    return JSON.parse(await fs.readFile(filePath, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAgentItem(item: SocialAgentItem, platform: SocialPlatform, candidate?: SocialAgentCandidate): CommunityData | null {
+  const content = buildAgentItemContent(item);
+  if (!content) return null;
+  const itemType = platform === "reddit" ? "POST" : "VIDEO";
+  return {
+    platform: platformLabels[platform],
+    itemType,
+    title: cleanText(item.title, 240) || null,
+    content,
+    author: cleanText(item.author || item.subreddit, 160) || null,
+    score: finiteInteger(item.postScore ?? item.likeCount ?? item.viewCount),
+    commentCount: finiteInteger(item.commentCount),
+    publishedAt: parseDate(item.publishedAt),
+    sourceUrl: cleanUrl(item.sourceUrl),
+    searchQuery: candidateSearchQuery(candidate),
+    relatedProducts: relatedText([...(item.tags ?? []), ...(item.relatedLinks ?? []), item.flair])
+  };
+}
+
+function buildAgentItemContent(item: SocialAgentItem) {
+  const poster = item.collectionDecision?.evidenceAnalysis?.poster;
+  const captions = item.collectionDecision?.evidenceAnalysis?.captions;
+  const captionText = item.supplementalEvidence?.youtubeCaptions?.captionText;
+  const captionLanguage = item.supplementalEvidence?.youtubeCaptions?.captionLanguage;
+  const posterBlocks = [
+    poster?.viewpoint ? `贴主观点：${poster.viewpoint}` : "",
+    poster?.summary ? `贴主观点总结：${poster.summary}` : "",
+    poster?.extractedFacts?.length ? `贴主观点要点：${poster.extractedFacts.join("；")}` : ""
+  ];
+  const captionBlocks = [
+    captions?.summary ? `字幕总结：${captions.summary}` : "",
+    captions?.extractedFacts?.length ? `字幕要点：${captions.extractedFacts.join("；")}` : "",
+    captionText ? `字幕摘录${captionLanguage ? `（${captionLanguage}）` : ""}：${captionText}` : ""
+  ];
+  const blocks = [
+    ...posterBlocks,
+    item.collectionDecision?.evidenceAnalysis?.detail?.summary ? `详情总结：${item.collectionDecision.evidenceAnalysis.detail.summary}` : "",
+    item.body || item.description || "",
+    ...captionBlocks,
+    item.collectionDecision?.reason ? `采集判断：${item.collectionDecision.reason}` : "",
+    item.title || ""
+  ].filter(Boolean);
+  return cleanText(blocks.join("\n"), 1800);
+}
+
+function normalizeAgentComment(comment: SocialAgentComment, item: SocialAgentItem, platform: SocialPlatform, candidate?: SocialAgentCandidate): CommunityData | null {
+  const content = cleanText(comment.content, 1400);
+  if (!content) return null;
+  return {
+    platform: platformLabels[platform],
+    itemType: "COMMENT",
+    title: cleanText(item.title, 240) || null,
+    content,
+    author: cleanText(comment.author, 160) || null,
+    score: finiteInteger(comment.likeCount ?? comment.valueScore),
+    commentCount: finiteInteger(comment.replyCount),
+    publishedAt: parseDate(comment.publishedAt),
+    sourceUrl: cleanUrl(comment.commentUrl || item.sourceUrl),
+    searchQuery: candidateSearchQuery(candidate),
+    relatedProducts: relatedText([comment.sentiment, ...(comment.matchedThemes ?? []), ...(comment.selectedReasons ?? [])])
+  };
+}
+
+async function recordSocialAgentSources(taskId: string, run: SocialAgentRunResult, platforms: SocialPlatform[], items: CommunityData[]) {
+  await Promise.all(
+    platforms.map((platform) => {
+      const platformItems = items.filter((item) => item.platform === platformLabels[platform]);
+      const status = run.summary?.platforms?.[platform];
+      const hasItems = platformItems.length > 0;
+      return recordSource({
+        taskId,
+        sourceType: sourceTypes[platform],
+        sourceName: sourceNames[platform],
+        url: sourceUrls[platform],
+        status: hasItems ? "SUCCESS" : "FAILED",
+        rawContent: JSON.stringify({
+          runId: run.runId,
+          runDirectory: run.runDirectory,
+          platformStatus: status,
+          savedItems: platformItems.length,
+          videos: platformItems.filter((item) => item.itemType === "VIDEO").length,
+          posts: platformItems.filter((item) => item.itemType === "POST").length,
+          comments: platformItems.filter((item) => item.itemType === "COMMENT").length
+        }),
+        errorMessage: hasItems ? undefined : status?.reason || `${sourceNames[platform]} 未保存到有效内容。`
+      });
+    })
   );
+}
+
+function candidateSearchQuery(candidate?: SocialAgentCandidate) {
+  return cleanText(candidate?.searchGroupQuery || candidate?.matchedQuery || candidate?.matchedQueries?.join(" / "), 360) || null;
+}
+
+function relatedText(values: Array<string | null | undefined>) {
+  const text = values
+    .map((value) => cleanText(value, 80))
+    .filter(Boolean)
+    .slice(0, 10)
+    .join("、");
+  return text || null;
 }
 
 function normalizeLimit(value: string | undefined, fallback: number, maximum: number) {
@@ -245,8 +472,9 @@ function parseDate(value: unknown) {
 }
 
 function processErrorMessage(error: unknown, fallback: string) {
-  if (error && typeof error === "object" && "stderr" in error && typeof error.stderr === "string" && error.stderr.trim()) {
-    return error.stderr.trim().slice(0, 1000);
+  if (error && typeof error === "object") {
+    if ("stderr" in error && typeof error.stderr === "string" && error.stderr.trim()) return error.stderr.trim().slice(0, 1000);
+    if ("message" in error && typeof error.message === "string" && error.message.trim()) return error.message.slice(0, 1000);
   }
   return error instanceof Error ? error.message.slice(0, 1000) : fallback;
 }

@@ -1,0 +1,16 @@
+{
+  "appName": "Otter.ai",
+  "officialWebsite": "https://otter.ai",
+  "country": "US",
+  "language": "en",
+  "platforms": ["reddit"],
+  "maxItemsPerPlatform": 5,
+  "maxCommentsPerItem": 10,
+  "browser": {
+    "mode": "existing",
+    "connection": "cdp",
+    "cdpEndpoint": 9333,
+    "reuseOpenPages": true,
+    "preserveExistingBrowser": true
+  }
+}

@@ -15,7 +15,8 @@ const recollectSources: RecollectSource[] = [
   { label: "谷歌广告", value: "google_ads", description: "Google Ads Transparency 广告素材" },
   { label: "Meta 广告", value: "meta_ads", description: "Facebook / Instagram 广告素材" },
   { label: "TikTok", value: "tiktok", description: "TikTok 视频与评论" },
-  { label: "YouTube", value: "youtube", description: "YouTube 视频与热门评论" }
+  { label: "YouTube", value: "youtube", description: "YouTube 视频与热门评论" },
+  { label: "Reddit", value: "reddit", description: "Reddit 帖子与评论" }
 ];
 
 export function TaskRecollectButton({ taskId }: { taskId: string }) {

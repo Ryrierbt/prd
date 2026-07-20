@@ -1,0 +1,36 @@
+{
+  "name": "deepseek-competitor-collector",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Public overseas competitor data collection agent powered by DeepSeek and Playwright",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "browser:open": "powershell -ExecutionPolicy Bypass -File scripts/open-browser.ps1",
+    "browser:open:mac": "bash scripts/open-browser.sh",
+    "collect": "tsx --env-file=.env src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "playwright": "^1.61.1",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

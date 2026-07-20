@@ -39,6 +39,7 @@ export async function collectGooglePlay(taskId: string, appName: string, provide
         url: app.url
       })
     });
+    await mergeAppProfilePlatforms(taskId, ["Android"]);
     await prisma.analysisResult.create({
       data: {
         taskId,
@@ -132,6 +133,55 @@ export async function collectGooglePlay(taskId: string, appName: string, provide
     await recordSource({ taskId, sourceType: "GOOGLE_PLAY_REVIEWS", sourceName: "Google Play 最近评论", url, status: "FAILED", errorMessage });
     return [];
   }
+}
+
+async function mergeAppProfilePlatforms(taskId: string, platforms: string[]) {
+  const existing = await prisma.appProfile.findUnique({ where: { taskId } });
+  const merged = uniquePlatforms([...(existing?.platforms?.split(/[、,，\/／;；\n]+/) ?? []), ...platforms]);
+  await prisma.appProfile.upsert({
+    where: { taskId },
+    update: { platforms: merged.join("、") },
+    create: {
+      taskId,
+      summary: "暂未获取",
+      positioning: "暂未获取",
+      targetUsers: "暂未获取",
+      useCases: "暂未获取",
+      platforms: merged.join("、"),
+      features: "暂未获取"
+    }
+  });
+}
+
+function uniquePlatforms(values: string[]) {
+  const normalized = values
+    .map((value) => value.trim())
+    .filter((value) => value && value !== "暂未获取");
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const value of normalized) {
+    const key = platformKey(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(platformLabel(value));
+  }
+  return output.length ? output : ["Android"];
+}
+
+function platformKey(value: string) {
+  const normalized = value.toLowerCase();
+  if (/google\s*play|谷歌应用|安卓应用|android/.test(normalized)) return "android";
+  if (/app\s*store|apple|ios|iphone|ipad|苹果/.test(normalized)) return "ios";
+  if (/web|website|browser|网页|官网/.test(normalized)) return "web";
+  return normalized.replace(/\s+/g, "");
+}
+
+function platformLabel(value: string) {
+  const key = platformKey(value);
+  if (key === "android") return "Android";
+  if (key === "ios") return "iOS";
+  if (key === "web") return "Web";
+  return value;
 }
 
 function parseGooglePlayAppId(url?: string | null) {

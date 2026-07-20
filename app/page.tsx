@@ -1,5 +1,6 @@
 import { TaskForm } from "@/components/task-form";
 import { DeepSeekSettings } from "@/components/deepseek-settings";
+import { SocialBrowserLauncher } from "@/components/social-browser-launcher";
 import { SiteShell } from "@/components/site-shell";
 
 export default function HomePage() {
@@ -18,6 +19,7 @@ export default function HomePage() {
         </section>
         <aside className="home-configs">
           <DeepSeekSettings />
+          <SocialBrowserLauncher />
         </aside>
       </div>
       <TaskForm />

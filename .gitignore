@@ -16,3 +16,6 @@ prisma/dev.db-journal
 prisma.dev.db
 vendor/
 data/reports/*.html
+tools/social-agent/data/
+tools/social-agent/.chrome-agent-profile/
+tools/social-agent/.project-chrome-profile*/

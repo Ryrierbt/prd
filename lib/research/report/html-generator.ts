@@ -15,7 +15,7 @@ type ReportTask = Prisma.ResearchTaskGetPayload<{
 
 export function generateResearchReport(task: ReportTask) {
   const generatedAt = new Date();
-  const visibleSources = task.sources.filter((source) => source.sourceType !== "COMMUNITY_REDDIT");
+  const visibleSources = task.sources;
   const successfulSources = visibleSources.filter((source) => source.status === "SUCCESS");
   const failedSources = visibleSources.filter((source) => source.status === "FAILED");
   const analysisModel = reportAnalysisModel(task);
@@ -31,8 +31,10 @@ export function generateResearchReport(task: ReportTask) {
   const deepSeekCustomerSegmentsError = readAnalysis(task, "DEEPSEEK_CUSTOMER_SEGMENTS_ERROR");
   const deepSeekCommunitySummary = readAnalysis(task, "DEEPSEEK_COMMUNITY_SUMMARY");
   const deepSeekCommunityError = readAnalysis(task, "DEEPSEEK_COMMUNITY_SUMMARY_ERROR");
+  const supportedPlatforms = supportPlatformsValue(task, deepSeekProfileTranslation);
   const youtubeStats = communityPlatformStats(task.communityItems, "YouTube");
   const tiktokStats = communityPlatformStats(task.communityItems, "TikTok");
+  const redditStats = communityPlatformStats(task.communityItems, "Reddit");
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -237,6 +239,9 @@ export function generateResearchReport(task: ReportTask) {
     .promotion-material-source{margin-top:auto;font-size:13px}
     .community-module{display:grid;gap:16px}
     .community-module h2{margin-bottom:0}
+    .community-proof{display:flex;flex-direction:column;gap:3px;margin-top:-8px;color:#64748b;font-size:12px;line-height:1.45}
+    .community-proof strong{color:#1e40af;font-size:12px}
+    .community-proof span{overflow-wrap:anywhere}
     .community-top-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.85fr);gap:12px}
     .community-panel{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0}
     .community-panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
@@ -276,7 +281,7 @@ export function generateResearchReport(task: ReportTask) {
       <a href="#features">功能分析</a>
       <a href="#reviews">用户评价</a>
       <a href="#promotion">广告和推广</a>
-      <a href="#community">社区热议</a>
+      <a href="#community">社区分析</a>
       <a href="#pricing">收费模式</a>
       <a href="#sources">数据来源</a>
     </nav>
@@ -291,6 +296,7 @@ export function generateResearchReport(task: ReportTask) {
           <div class="report-scope-item"><span>推广素材</span><strong>${task.promotions.length}</strong><small>官网、Google、Meta 等</small></div>
           <div class="report-scope-item"><span>YouTube</span><strong>${youtubeStats.videos}/${youtubeStats.comments}</strong><small>视频 / 评论</small></div>
           <div class="report-scope-item"><span>TikTok</span><strong>${tiktokStats.videos}/${tiktokStats.comments}</strong><small>视频 / 评论</small></div>
+          <div class="report-scope-item"><span>Reddit</span><strong>${redditStats.posts}/${redditStats.comments}</strong><small>帖子 / 评论</small></div>
           <div class="report-scope-item model"><span>AI 分析模型</span><strong>${escapeHtml(analysisModel)}</strong><small>独立分析请求</small></div>
         </div>
         ${failedSources.length ? `<p class="warning">部分来源采集失败，报告已保留缺失说明，不会用推测内容冒充事实。</p>` : ""}
@@ -302,7 +308,7 @@ export function generateResearchReport(task: ReportTask) {
           <div class="info-card"><strong>产品一句话介绍</strong><p>${escapeHtml(profileValue(deepSeekProfileTranslation, "summary", task.appProfile?.summary))}</p></div>
           <div class="info-card"><strong>产品定位</strong><p>${escapeHtml(profileValue(deepSeekProfileTranslation, "positioning", task.appProfile?.positioning))}</p></div>
           <div class="info-card"><strong>主要场景</strong><p>${escapeHtml(profileValue(deepSeekProfileTranslation, "useCases", task.appProfile?.useCases))}</p></div>
-          <div class="info-card"><strong>支持平台</strong><p>${escapeHtml(profileValue(deepSeekProfileTranslation, "platforms", task.appProfile?.platforms))}</p></div>
+          <div class="info-card"><strong>支持平台</strong><p>${escapeHtml(supportedPlatforms)}</p></div>
         </div>
         ${renderCustomerSegments(deepSeekCustomerSegments, task.appProfile?.targetUsers, deepSeekCustomerSegmentsError)}
       </section>
@@ -433,6 +439,8 @@ function renderReviewAnalysisSection(
   const requestReviews = representativeReviews(task.reviews, "request");
   const countries = inferReviewCountries(task.reviews);
   const sourceText = countries.length ? `来自 ${countries.length} 个国家/地区` : "国家/地区暂未识别";
+  const samplingText = reviewSamplingSourceSummary(task.sources, stats.total);
+  const reviewSourceText = samplingText ? `${sourceText}；${samplingText}` : sourceText;
   const ratingBreakdown = renderRatingBreakdown(appStoreRatings);
   const model = typeof deepSeekReviewSummary?.model === "string" ? deepSeekReviewSummary.model : "系统规则 + DeepSeek";
   const donutPositive = stats.total ? stats.positiveRate : 0;
@@ -450,7 +458,7 @@ function renderReviewAnalysisSection(
       </div>
     </div>
     <div class="review-metrics">
-      <div class="review-metric-card"><span>分析评论数</span><strong>${escapeHtml(String(stats.total))}</strong><small>${escapeHtml(sourceText)}</small></div>
+      <div class="review-metric-card"><span>分析评论数</span><strong>${escapeHtml(String(stats.total))}</strong><small>${escapeHtml(reviewSourceText)}</small></div>
       <div class="review-metric-card"><span>平均评分</span><strong>${escapeHtml(stats.averageRating)}<small class="stars">${escapeHtml(starText(stats.averageRating))}</small></strong><small>${ratingBreakdown || "基于可用评分样本"}</small></div>
       <div class="review-metric-card"><span>正面评论占比</span><strong>${stats.positiveRate}%</strong><small>${stats.positive} 条</small></div>
       <div class="review-metric-card"><span>中性评论占比</span><strong>${stats.neutralRate}%</strong><small>${stats.neutral} 条</small></div>
@@ -501,11 +509,52 @@ function renderReviewPlatformSources(sources: ReportTask["sources"], reviews: Re
     .map(({ name, platform, sourceType }) => {
       const source = sources.filter((item) => item.sourceType === sourceType).at(-1);
       const count = reviews.filter((review) => review.platform === platform).length;
+      const payload = readSourcePayload(source);
+      const fetchedCount = positiveInteger(payload?.fetchedReviewCount);
+      const selectedCount = positiveInteger(payload?.selectedReviewCount) ?? count;
       const failed = source?.status === "FAILED";
-      const status = failed ? source.errorMessage || "评论采集失败" : source?.status === "SUCCESS" ? `已采集，${count} 条高质量样本` : "未采集";
+      const sampledStatus =
+        fetchedCount && fetchedCount > selectedCount
+          ? `已采集，从 ${fetchedCount.toLocaleString("zh-CN")} 条抓取评论中过滤出 ${selectedCount.toLocaleString("zh-CN")} 条高质量样本`
+          : `已采集，${count} 条高质量样本`;
+      const status = failed ? source.errorMessage || "评论采集失败" : source?.status === "SUCCESS" ? sampledStatus : "未采集";
       return `<div class="review-platform-source${failed ? " failed" : ""}"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(status)}</span></div>`;
     })
     .join("")}</div>`;
+}
+
+function reviewSamplingSourceSummary(sources: ReportTask["sources"], analyzedCount: number) {
+  const fetchedCount = reviewSourcePayloads(sources)
+    .map((payload) => positiveInteger(payload.fetchedReviewCount))
+    .filter((count): count is number => typeof count === "number")
+    .reduce((sum, count) => sum + count, 0);
+
+  if (!fetchedCount) return "";
+  const formattedFetched = fetchedCount.toLocaleString("zh-CN");
+  if (fetchedCount > analyzedCount) return `从 ${formattedFetched} 条抓取评论中过滤得到`;
+  return `已分析全部 ${formattedFetched} 条抓取评论`;
+}
+
+function reviewSourcePayloads(sources: ReportTask["sources"]) {
+  return ["APP_STORE_REVIEWS", "GOOGLE_PLAY_REVIEWS"]
+    .map((sourceType) => sources.filter((source) => source.sourceType === sourceType && source.status === "SUCCESS").at(-1))
+    .map(readSourcePayload)
+    .filter((payload): payload is Record<string, unknown> => Boolean(payload));
+}
+
+function readSourcePayload(source?: ReportTask["sources"][number]) {
+  if (!source?.rawContent) return null;
+  try {
+    const payload = JSON.parse(source.rawContent) as unknown;
+    return payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function positiveInteger(value: unknown) {
+  const numberValue = typeof value === "number" ? value : typeof value === "string" ? Number.parseInt(value, 10) : NaN;
+  return Number.isInteger(numberValue) && numberValue > 0 ? numberValue : null;
 }
 
 function buildReviewStats(reviews: ReviewItem[], appStoreSummary: Record<string, unknown> | null): ReviewStats {
@@ -715,14 +764,14 @@ function renderDeepSeekFeatureAnalysis(summary: Record<string, unknown> | null, 
 
   return `<div class="feature-panel"><div class="feature-list">${features
     .map(
-      (feature, index) => `<details class="feature-item"${index === 0 ? " open" : ""}><summary>${escapeHtml(feature.tag)}</summary><div class="feature-body"><div class="feature-row"><div class="feature-label">官方声称能力</div><div class="feature-value">${escapeHtml(localizedOfficialClaim(feature.officialClaim))}</div></div><div class="feature-row"><div class="feature-label">证据来源</div><div class="feature-value">${feature.evidenceSources.map((source) => `<span class="tag">${escapeHtml(source)}</span>`).join("") || "暂未标注"}</div></div><div class="feature-feedback"><div class="feature-feedback-box"><strong>用户正向反馈</strong>${renderFeatureList(feature.userPros, "暂无用户评价反馈，当前仅保留官方/商店/广告证据。")}</div><div class="feature-feedback-box risk"><strong>用户负向反馈 / 风险</strong>${renderFeatureList(feature.userCons, "暂无用户评价反馈，尚未发现明确风险。")}</div></div></div></details>`
+      (feature, index) => `<details class="feature-item"${index === 0 ? " open" : ""}><summary>${escapeHtml(feature.tag)}</summary><div class="feature-body"><div class="feature-row"><div class="feature-label">综合能力判断</div><div class="feature-value">${escapeHtml(localizedAbilitySummary(feature.abilitySummary))}</div></div><div class="feature-row"><div class="feature-label">证据来源</div><div class="feature-value">${feature.evidenceSources.map((source) => `<span class="tag">${escapeHtml(featureEvidenceSourceLabel(source))}</span>`).join("") || "暂未标注"}</div></div><div class="feature-feedback"><div class="feature-feedback-box"><strong>用户正向反馈</strong>${renderFeatureList(feature.userPros, "暂无用户评价反馈，当前仅保留多来源能力证据。")}</div><div class="feature-feedback-box risk"><strong>用户负向反馈 / 风险</strong>${renderFeatureList(feature.userCons, "暂无用户评价反馈，尚未发现明确风险。")}</div></div></div></details>`
     )
     .join("")}</div></div>`;
 }
 
 type FeatureAnalysisItem = {
   tag: string;
-  officialClaim: string;
+  abilitySummary: string;
   evidenceSources: string[];
   userPros: string[];
   userCons: string[];
@@ -732,11 +781,11 @@ function normalizeFeatureAnalysisItem(value: unknown): FeatureAnalysisItem | nul
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const tag = textValue(record.tag).slice(0, 24);
-  const officialClaim = textValue(record.officialClaim).slice(0, 560);
-  if (!tag || !officialClaim) return null;
+  const abilitySummary = (textValue(record.abilitySummary) || textValue(record.officialClaim)).slice(0, 560);
+  if (!tag || !abilitySummary) return null;
   return {
     tag,
-    officialClaim,
+    abilitySummary,
     evidenceSources: stringArray(record.evidenceSources).slice(0, 5),
     userPros: stringArray(record.userPros).slice(0, 2),
     userCons: stringArray(record.userCons).slice(0, 2)
@@ -745,11 +794,19 @@ function normalizeFeatureAnalysisItem(value: unknown): FeatureAnalysisItem | nul
 
 function renderFeatureList(items: string[], emptyText: string) {
   if (!items.length) return `<p class="muted">${escapeHtml(emptyText)}</p>`;
-  return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  return `<ul>${items.map((item) => `<li>${escapeHtml(localizedFeatureFeedback(item))}</li>`).join("")}</ul>`;
 }
 
-function localizedOfficialClaim(value: string) {
+function localizedAbilitySummary(value: string) {
   return looksMostlyEnglish(value) ? `待重新生成中文说明：${value}` : value;
+}
+
+function localizedFeatureFeedback(value: string) {
+  return looksMostlyEnglish(value) ? "该条反馈来自英文评论，请重新生成中文功能分析后展示。" : value;
+}
+
+function featureEvidenceSourceLabel(value: string) {
+  return value === "视频字幕" ? "社区视频字幕" : value;
 }
 
 function looksMostlyEnglish(value: string) {
@@ -764,7 +821,7 @@ function renderFallbackFeatureAnalysis(value?: string | null) {
 
   return `<div class="feature-panel"><div class="feature-list">${tags
     .map(
-      (tag, index) => `<details class="feature-item"${index === 0 ? " open" : ""}><summary>${escapeHtml(tag)}</summary><div class="feature-body"><div class="feature-row"><div class="feature-label">官方声称能力</div><div class="feature-value">公开文本中出现该功能关键词，尚未完成 DeepSeek 结构化分析。</div></div><div class="feature-row"><div class="feature-label">证据来源</div><div class="feature-value"><span class="tag">官网</span><span class="tag">App Store</span></div></div><div class="feature-feedback"><div class="feature-feedback-box"><strong>用户正向反馈</strong><p class="muted">暂无用户评价反馈。</p></div><div class="feature-feedback-box risk"><strong>用户负向反馈 / 风险</strong><p class="muted">暂无用户评价反馈。</p></div></div></div></details>`
+      (tag, index) => `<details class="feature-item"${index === 0 ? " open" : ""}><summary>${escapeHtml(tag)}</summary><div class="feature-body"><div class="feature-row"><div class="feature-label">综合能力判断</div><div class="feature-value">公开文本中出现该功能关键词，尚未完成 DeepSeek 结构化分析。</div></div><div class="feature-row"><div class="feature-label">证据来源</div><div class="feature-value"><span class="tag">官网</span><span class="tag">App Store</span></div></div><div class="feature-feedback"><div class="feature-feedback-box"><strong>用户正向反馈</strong><p class="muted">暂无用户评价反馈。</p></div><div class="feature-feedback-box risk"><strong>用户负向反馈 / 风险</strong><p class="muted">暂无用户评价反馈。</p></div></div></div></details>`
     )
     .join("")}</div></div>`;
 }
@@ -904,6 +961,54 @@ function profileValue(translation: Record<string, unknown> | null, field: string
   return typeof translation?.[field] === "string" && translation[field].trim() ? translation[field] : fallback || "暂未获取";
 }
 
+function supportPlatformsValue(task: ReportTask, translation: Record<string, unknown> | null) {
+  const values = splitPlatformText(profileValue(translation, "platforms", task.appProfile?.platforms));
+  const successfulSourceTypes = new Set(task.sources.filter((source) => source.status === "SUCCESS").map((source) => source.sourceType));
+  if (successfulSourceTypes.has("APP_STORE") || task.reviews.some((review) => review.platform === "Apple App Store")) {
+    values.push("iOS");
+  }
+  if (successfulSourceTypes.has("GOOGLE_PLAY") || task.reviews.some((review) => review.platform === "Google Play Store")) {
+    values.push("Android");
+  }
+  const normalized = uniquePlatformValues(values).filter((value) => value !== "暂未获取");
+  return normalized.length ? normalized.join("、") : "暂未获取";
+}
+
+function splitPlatformText(value: string) {
+  return value
+    .split(/[、,，\/／;；\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function uniquePlatformValues(values: string[]) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values) {
+    const key = platformKey(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(platformLabel(value));
+  }
+  return output;
+}
+
+function platformKey(value: string) {
+  const normalized = value.toLowerCase();
+  if (/google\s*play|谷歌应用|安卓应用|android/.test(normalized)) return "android";
+  if (/app\s*store|apple|ios|iphone|ipad|苹果/.test(normalized)) return "ios";
+  if (/web|website|browser|网页|官网/.test(normalized)) return "web";
+  return normalized.replace(/\s+/g, "");
+}
+
+function platformLabel(value: string) {
+  const key = platformKey(value);
+  if (key === "android") return "Android";
+  if (key === "ios") return "iOS";
+  if (key === "web") return "Web";
+  return value;
+}
+
 function pricingBenefitsValue(summary: Record<string, unknown> | null, planName: string, fallback?: string | null) {
   const plans = Array.isArray(summary?.plans) ? summary.plans : [];
   const match = plans.find(
@@ -922,7 +1027,6 @@ function formatBillingPeriod(value?: string | null) {
 
 function latestFetchTime(task: ReportTask) {
   const times = task.sources
-    .filter((source) => source.sourceType !== "COMMUNITY_REDDIT")
     .map((source) => source.fetchedAt?.getTime())
     .filter((time): time is number => Boolean(time));
   return times.length ? new Date(Math.max(...times)).toLocaleString("zh-CN") : "暂未获取";
@@ -931,6 +1035,7 @@ function latestFetchTime(task: ReportTask) {
 function communityPlatformStats(items: ReportTask["communityItems"], platform: string) {
   return {
     videos: items.filter((item) => item.platform === platform && item.itemType === "VIDEO").length,
+    posts: items.filter((item) => item.platform === platform && item.itemType === "POST").length,
     comments: items.filter((item) => item.platform === platform && item.itemType === "COMMENT").length
   };
 }
@@ -967,7 +1072,6 @@ type CommunityEvidenceInsight = {
   title: string;
   summary: string;
   evidenceIndexes: number[];
-  confidence: string;
 };
 
 type CommunityTopic = CommunityEvidenceInsight & {
@@ -980,7 +1084,6 @@ type CommunityFlow = {
   toProducts: string[];
   reason: string;
   evidenceIndexes: number[];
-  confidence: string;
 };
 
 type CommunityReviewGap = {
@@ -989,31 +1092,37 @@ type CommunityReviewGap = {
   userFeedback: string;
   gap: string;
   evidenceIndexes: number[];
-  confidence: string;
 };
 
-type CommunityOpportunity = CommunityEvidenceInsight & { priority: string };
+type CommunityOpportunity = CommunityEvidenceInsight;
 
 function renderCommunitySection(items: CommunityItem[], summary: Record<string, unknown> | null, errorSummary: Record<string, unknown> | null) {
   if (!items.length) {
     const error = textValue(errorSummary?.message);
-    return `<div class="community-module"><h2>社区热议</h2>${error ? `<p class="warning">社区讨论分析失败：${escapeHtml(error)}</p>` : ""}<div class="community-empty">暂未采集到可用的社区视频或评论。请检查 YouTube、TikTok 等公开内容状态。</div></div>`;
+    return `<div class="community-module"><h2>社区分析</h2>${error ? `<p class="warning">社区讨论分析失败：${escapeHtml(error)}</p>` : ""}<div class="community-empty">暂未采集到可用的社区帖子、视频或评论。请检查 YouTube、Reddit、TikTok 等公开内容状态。</div></div>`;
   }
 
   const analysis = normalizeCommunityAnalysis(summary);
   const representativeItems = representativeCommunityItems(items);
+  const youtubeStats = communityPlatformStats(items, "YouTube");
+  const redditStats = communityPlatformStats(items, "Reddit");
+  const tiktokStats = communityPlatformStats(items, "TikTok");
   const error = textValue(errorSummary?.message);
   return `<div class="community-module">
-    <h2>社区热议</h2>
+    <h2>社区分析</h2>
+    <div class="community-proof">
+      <span><strong>精选样本 ${items.length} 条</strong> · YouTube ${youtubeStats.videos}/${youtubeStats.comments} · Reddit ${redditStats.posts}/${redditStats.comments} · TikTok ${tiktokStats.videos}/${tiktokStats.comments}</span>
+      <span>已过滤低相关内容，优先保留贴主观点、代表评论、竞品比较和使用体验证据。</span>
+    </div>
     ${error ? `<p class="warning">AI 社区分析失败：${escapeHtml(error)}。下方仍保留已采集的代表内容。</p>` : ""}
     <div class="community-top-grid">
       <div class="community-panel">
-        <div class="community-panel-head"><h3>跨平台热点 Top 5</h3></div>
-        ${analysis.hotTopics.length ? `<ol class="community-topic-list">${analysis.hotTopics.map(renderCommunityTopic).join("")}</ol>` : `<p class="community-empty">暂无足够证据生成社区热点。</p>`}
+        <div class="community-panel-head"><h3>跨平台核心议题 Top 5</h3></div>
+        ${analysis.hotTopics.length ? `<ol class="community-topic-list">${analysis.hotTopics.map(renderCommunityTopic).join("")}</ol>` : `<p class="community-empty">暂无足够证据生成核心议题。</p>`}
       </div>
       <div class="community-panel">
-        <div class="community-panel-head"><h3>用户为什么寻找替代品</h3></div>
-        ${renderCommunityInsightList(analysis.alternativeReasons, "暂无明确的替代品迁移动机。")}
+        <div class="community-panel-head"><h3>用户需求与产品选择动因</h3></div>
+        ${renderCommunityInsightList(analysis.alternativeReasons, "暂无明确的产品选择动因。")}
       </div>
     </div>
     <div class="community-analysis-grid">
@@ -1035,7 +1144,7 @@ function normalizeCommunityAnalysis(summary: Record<string, unknown> | null) {
     const title = textValue(value.title).slice(0, 48);
     const summaryText = textValue(value.summary).slice(0, 140);
     const evidenceIndexes = indexes(value.evidenceIndexes);
-    return title && summaryText && evidenceIndexes.length ? { title, summary: summaryText, evidenceIndexes, confidence: textValue(value.confidence).slice(0, 8) } : null;
+    return title && summaryText && evidenceIndexes.length ? { title, summary: summaryText, evidenceIndexes } : null;
   };
   const hotTopics = records(summary?.hotTopics)
     .map((value) => {
@@ -1051,7 +1160,7 @@ function normalizeCommunityAnalysis(summary: Record<string, unknown> | null) {
       const toProducts = stringArray(value.toProducts).slice(0, 5);
       const reason = textValue(value.reason).slice(0, 140);
       const evidenceIndexes = indexes(value.evidenceIndexes);
-      return fromProduct && toProducts.length && reason && evidenceIndexes.length ? { fromProduct, toProducts, reason, evidenceIndexes, confidence: textValue(value.confidence).slice(0, 8) } : null;
+      return fromProduct && toProducts.length && reason && evidenceIndexes.length ? { fromProduct, toProducts, reason, evidenceIndexes } : null;
     })
     .filter((item): item is CommunityFlow => Boolean(item))
     .slice(0, 5);
@@ -1062,14 +1171,14 @@ function normalizeCommunityAnalysis(summary: Record<string, unknown> | null) {
       const userFeedback = textValue(value.userFeedback).slice(0, 110);
       const gap = textValue(value.gap).slice(0, 140);
       const evidenceIndexes = indexes(value.evidenceIndexes);
-      return title && reviewerClaim && userFeedback && gap && evidenceIndexes.length ? { title, reviewerClaim, userFeedback, gap, evidenceIndexes, confidence: textValue(value.confidence).slice(0, 8) } : null;
+      return title && reviewerClaim && userFeedback && gap && evidenceIndexes.length ? { title, reviewerClaim, userFeedback, gap, evidenceIndexes } : null;
     })
     .filter((item): item is CommunityReviewGap => Boolean(item))
     .slice(0, 5);
   const opportunities = records(summary?.opportunities)
     .map((value) => {
       const base = evidence(value);
-      return base ? { ...base, priority: textValue(value.priority).slice(0, 8) } : null;
+      return base;
     })
     .filter((item): item is CommunityOpportunity => Boolean(item))
     .slice(0, 5);
@@ -1083,20 +1192,20 @@ function renderCommunityTopic(item: CommunityTopic, index: number) {
 
 function renderCommunityInsightList(items: CommunityEvidenceInsight[], emptyText: string) {
   return items.length
-    ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="community-evidence">${item.evidenceIndexes.length} 条证据${item.confidence ? ` · 置信度${escapeHtml(item.confidence)}` : ""}</span></div>`).join("")}</div>`
+    ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="community-evidence">${item.evidenceIndexes.length} 条证据</span></div>`).join("")}</div>`
     : `<p class="muted">${escapeHtml(emptyText)}</p>`;
 }
 
 function renderCommunityFlowCard(items: CommunityFlow[]) {
-  return `<div class="community-analysis-card"><h3>竞品推荐流向</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.fromProduct)} -> ${escapeHtml(item.toProducts.join("、"))}</strong><p>${escapeHtml(item.reason)}</p><div class="community-platforms">${item.toProducts.map((product) => `<span class="community-platform">${escapeHtml(product)}</span>`).join("")}</div></div>`).join("")}</div>` : `<p class="muted">样本中暂无明确的竞品流向。</p>`}</div>`;
+  return `<div class="community-analysis-card"><h3>社区提及品牌与替代方案</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.fromProduct)} -> ${escapeHtml(item.toProducts.join("、"))}</strong><p>${escapeHtml(item.reason)}</p><div class="community-platforms">${item.toProducts.map((product) => `<span class="community-platform">${escapeHtml(product)}</span>`).join("")}</div></div>`).join("")}</div>` : `<p class="muted">样本中暂无明确提及的品牌或替代方案。</p>`}</div>`;
 }
 
 function renderCommunityGapCard(items: CommunityReviewGap[]) {
-  return `<div class="community-analysis-card"><h3>视频测评与真实反馈差距</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>测评：${escapeHtml(item.reviewerClaim)}</p><p>反馈：${escapeHtml(item.userFeedback)}</p><p>${escapeHtml(item.gap)}</p></div>`).join("")}</div>` : `<p class="muted">暂无同时具备测评与用户反馈证据的差距判断。</p>`}</div>`;
+  return `<div class="community-analysis-card"><h3>不同内容来源的观点差异</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>来源一：${escapeHtml(item.reviewerClaim)}</p><p>来源二：${escapeHtml(item.userFeedback)}</p><p>${escapeHtml(item.gap)}</p></div>`).join("")}</div>` : `<p class="muted">暂无多来源观点差异证据。</p>`}</div>`;
 }
 
 function renderCommunityOpportunityCard(items: CommunityOpportunity[]) {
-  return `<div class="community-analysis-card"><h3>产品机会</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="community-evidence">${item.evidenceIndexes.length} 条证据${item.priority ? ` · 优先级${escapeHtml(item.priority)}` : ""}</span></div>`).join("")}</div>` : `<p class="muted">暂无证据充分的产品机会。</p>`}</div>`;
+  return `<div class="community-analysis-card"><h3>待验证的产品启示</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="community-evidence">${item.evidenceIndexes.length} 条证据</span></div>`).join("")}</div>` : `<p class="muted">暂无可提炼的待验证启示。</p>`}</div>`;
 }
 
 function representativeCommunityItems(items: CommunityItem[]) {
@@ -1112,7 +1221,7 @@ function representativeCommunityItems(items: CommunityItem[]) {
 
 function renderCommunityContent(item: CommunityItem) {
   const title = item.title || trimText(item.content, 64) || "社区内容";
-  const type = item.itemType === "VIDEO" ? `${item.platform} 视频` : `${item.platform} 评论`;
+  const type = item.itemType === "VIDEO" ? `${item.platform} 视频` : item.itemType === "POST" ? `${item.platform} 帖子` : `${item.platform} 评论`;
   const metadata = [item.author || "匿名", item.publishedAt ? item.publishedAt.toLocaleDateString("zh-CN") : "日期未知", item.score !== null ? `热度 ${item.score}` : ""].filter(Boolean).join(" · ");
   return `<article class="community-content"><div class="community-content-head"><span class="badge">${escapeHtml(type)}</span><span class="community-evidence">${escapeHtml(item.platform)}</span></div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(trimText(item.content, 180))}</p><span class="community-content-meta">${escapeHtml(metadata)}</span>${item.sourceUrl ? `<a href="${escapeHtml(item.sourceUrl)}" target="_blank" rel="noreferrer">打开来源</a>` : ""}</article>`;
 }

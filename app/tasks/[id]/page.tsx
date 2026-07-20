@@ -5,7 +5,6 @@ import { TaskProgress } from "@/components/task-progress";
 import { StatusBadge } from "@/components/status-badge";
 import { RetryTaskButton } from "@/components/retry-task-button";
 import { TaskAutoRefresh } from "@/components/task-auto-refresh";
-import { TikTokLoginConfirmButton } from "@/components/tiktok-login-confirm-button";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +20,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
     notFound();
   }
 
-  const visibleSources = task.sources.filter((source) => source.sourceType !== "COMMUNITY_REDDIT");
+  const visibleSources = task.sources;
   const successSources = visibleSources.filter((source) => source.status === "SUCCESS");
   const failedSources = visibleSources.filter((source) => source.status === "FAILED");
   const skippedSources = visibleSources.filter((source) => source.status === "SKIPPED");
@@ -29,7 +28,6 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   const hasFailedReviewSources = failedSources.some((source) => reviewSourceTypes.has(source.sourceType));
   const hasFailedNonReviewSources = failedSources.some((source) => !reviewSourceTypes.has(source.sourceType));
   const isWaitingForCollectionDecision = task.status === "COLLECTION_REVIEW";
-  const isWaitingForTikTokLogin = task.status === "COLLECTING_COMMUNITY" && task.currentStep.includes("TikTok") && task.currentStep.includes("已登录");
 
   return (
     <SiteShell activeNav="tasks">
@@ -70,12 +68,6 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
       {task.errorMessage ? (
         <div className="workspace-notice">
           {task.errorMessage}
-        </div>
-      ) : null}
-      {isWaitingForTikTokLogin ? (
-        <div className="workspace-notice action">
-          <span>请在弹出的 TikTok 浏览器中完成登录或确认已登录，然后回到这里继续采集。</span>
-          <TikTokLoginConfirmButton taskId={task.id} />
         </div>
       ) : null}
       <div className="workspace-source-grid">

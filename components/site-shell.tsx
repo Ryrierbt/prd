@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export function SiteShell({ children, activeNav = "home" }: { children: React.ReactNode; activeNav?: "home" | "tasks" }) {
+export function SiteShell({ children, activeNav = "home" }: { children: React.ReactNode; activeNav?: "home" | "tasks" | "compare" }) {
   return (
     <div className="home-page-shell">
       <header className="home-header">
@@ -15,6 +15,9 @@ export function SiteShell({ children, activeNav = "home" }: { children: React.Re
             </Link>
             <Link href="/tasks" className={`home-nav-link ${activeNav === "tasks" ? "active" : ""}`}>
               历史任务
+            </Link>
+            <Link href="/compare" className={`home-nav-link ${activeNav === "compare" ? "active" : ""}`}>
+              横向对比
             </Link>
           </nav>
         </div>
