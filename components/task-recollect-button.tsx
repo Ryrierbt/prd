@@ -10,6 +10,7 @@ type RecollectSource = {
 };
 
 const recollectSources: RecollectSource[] = [
+  { label: "官网", value: "website", description: "首页、功能、定价、客户案例、集成与帮助页面" },
   { label: "苹果商城", value: "app_store", description: "App Store 信息、评分、版本与评论" },
   { label: "谷歌应用商城", value: "google_play", description: "Google Play 信息、评分与评论" },
   { label: "行业研究", value: "google_research", description: "行业趋势、技术变化、竞品动态、用户需求" },

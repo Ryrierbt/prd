@@ -9,6 +9,7 @@ export async function recordSource(input: {
   url: string;
   status: SourceStatus;
   rawContent?: string;
+  rawContentLimit?: number;
   errorMessage?: string;
   fetchedAt?: Date;
 }) {
@@ -20,9 +21,8 @@ export async function recordSource(input: {
       url: input.url,
       status: input.status,
       fetchedAt: input.fetchedAt ?? new Date(),
-      rawContent: input.rawContent ? truncate(input.rawContent) : undefined,
+      rawContent: input.rawContent ? truncate(input.rawContent, input.rawContentLimit ?? 12000) : undefined,
       errorMessage: input.errorMessage
     }
   });
 }
-

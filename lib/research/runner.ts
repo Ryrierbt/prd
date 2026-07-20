@@ -13,8 +13,9 @@ import { statusLabels, taskStatuses, type TaskStatus } from "@/lib/research/stat
 const appStoreSourceTypes = ["APP_STORE", "APP_STORE_VERSION_HISTORY", "APP_STORE_RATINGS", "APP_STORE_REVIEWS"];
 const googlePlaySourceTypes = ["GOOGLE_PLAY", "GOOGLE_PLAY_RATINGS", "GOOGLE_PLAY_REVIEWS"];
 const communitySourceTypes = ["COMMUNITY_YOUTUBE", "COMMUNITY_TIKTOK", "COMMUNITY_REDDIT"];
+const websiteSourceTypes = ["WEBSITE", "WEBSITE_PAGE"];
 const googleResearchSourceTypeList = [...Object.values(googleResearchSourceTypes), googlePerformanceSourceType];
-export const selectableRecollectSources = ["app_store", "google_play", "google_research", "google_ads", "meta_ads", "tiktok", "youtube", "reddit"] as const;
+export const selectableRecollectSources = ["website", "app_store", "google_play", "google_research", "google_ads", "meta_ads", "tiktok", "youtube", "reddit"] as const;
 export type SelectableRecollectSource = (typeof selectableRecollectSources)[number];
 
 async function updateTask(taskId: string, status: TaskStatus, progress: number, errorMessage?: string | null) {
@@ -99,7 +100,7 @@ export async function runFailedSourcesRetry(taskId: string) {
   const retryPromotion = ["PROMOTION", "FACEBOOK_ADS_LIBRARY", "GOOGLE_ADS_TRANSPARENCY", "GOOGLE_ADS_OCR"].some((type) => failedTypes.has(type));
 
   if (retryWebsite) {
-    await prisma.source.deleteMany({ where: { taskId, sourceType: "WEBSITE" } });
+    await prisma.source.deleteMany({ where: { taskId, sourceType: { in: websiteSourceTypes } } });
     await updateTask(taskId, taskStatuses.collectingWebsite, 22, null);
     await collectWebsite(taskId, task.appName, websiteUrl);
   }
@@ -199,6 +200,15 @@ export async function runSelectedSourcesRetry(taskId: string, sources: Selectabl
 
   const task = await prisma.researchTask.findUniqueOrThrow({ where: { id: taskId } });
   const websiteUrl = inferWebsiteUrl(task.appName, task.websiteUrl);
+
+  if (selected.has("website")) {
+    await prisma.$transaction([
+      prisma.source.deleteMany({ where: { taskId, sourceType: { in: websiteSourceTypes } } }),
+      prisma.appProfile.deleteMany({ where: { taskId } })
+    ]);
+    await updateTask(taskId, taskStatuses.collectingWebsite, 22, null);
+    await collectWebsite(taskId, task.appName, websiteUrl);
+  }
 
   if (selected.has("app_store")) {
     await prisma.$transaction([
