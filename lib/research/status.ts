@@ -21,7 +21,7 @@ export const statusLabels: Record<TaskStatus, string> = {
   WAITING: "等待开始",
   IDENTIFYING: "正在识别 App",
   COLLECTING_WEBSITE: "正在收集官网信息",
-  COLLECTING_GOOGLE: "正在收集 Google 行业研究",
+  COLLECTING_GOOGLE: "正在收集行业研究",
   COLLECTING_PRICING: "正在收集价格和套餐",
   COLLECTING_REVIEWS: "正在收集用户评价",
   COLLECTING_COMMUNITY: "正在收集社区讨论",

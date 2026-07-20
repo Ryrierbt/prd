@@ -871,7 +871,7 @@ async function summarizeGoogleResearchDimension(taskId: string, dimension: typeo
   } catch (error) {
     await prisma.$transaction([
       prisma.analysisResult.deleteMany({ where: { taskId, analysisType: { in: [analysisType, errorType] } } }),
-      prisma.analysisResult.create({ data: { taskId, analysisType: errorType, resultJson: JSON.stringify({ message: error instanceof Error ? error.message : "Google 行业研究分析失败" }) } })
+      prisma.analysisResult.create({ data: { taskId, analysisType: errorType, resultJson: JSON.stringify({ message: error instanceof Error ? error.message : "行业研究分析失败" }) } })
     ]);
   }
 }

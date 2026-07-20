@@ -12,7 +12,7 @@ type RecollectSource = {
 const recollectSources: RecollectSource[] = [
   { label: "苹果商城", value: "app_store", description: "App Store 信息、评分、版本与评论" },
   { label: "谷歌应用商城", value: "google_play", description: "Google Play 信息、评分与评论" },
-  { label: "Google 行业研究", value: "google_research", description: "行业趋势、技术变化、竞品动态、用户需求" },
+  { label: "行业研究", value: "google_research", description: "行业趋势、技术变化、竞品动态、用户需求" },
   { label: "谷歌广告", value: "google_ads", description: "Google Ads Transparency 广告素材" },
   { label: "Meta 广告", value: "meta_ads", description: "Facebook / Instagram 广告素材" },
   { label: "TikTok", value: "tiktok", description: "TikTok 视频与评论" },

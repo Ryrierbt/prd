@@ -293,7 +293,7 @@ export function generateResearchReport(task: ReportTask) {
       <a class="active" href="#overview">报告概览</a>
       <a href="#profile">基础信息</a>
       <a href="#features">功能分析</a>
-      <a href="#google-research">Google 行业研究</a>
+      <a href="#google-research">行业研究</a>
       <a href="#reviews">用户评价</a>
       <a href="#promotion">广告和推广</a>
       <a href="#community">社区分析</a>
@@ -1090,7 +1090,7 @@ function readGoogleResearchAnalyses(task: ReportTask) {
 
 function renderGoogleResearchSection(analyses: ReturnType<typeof readGoogleResearchAnalyses>, items: GoogleResearchItem[]) {
   const total = items.length;
-  return `<div class="google-research-module"><h2>Google 行业研究</h2><p class="muted">基于 Google 公开文章，按四个维度分别分析；共采集 ${total} 篇文章，每个维度独立调用一次 AI。</p><div class="google-research-grid">${analyses.map((entry) => {
+  return `<div class="google-research-module"><h2>行业研究</h2><p class="muted">基于 Google 公开文章，按四个维度分别分析；共采集 ${total} 篇文章，每个维度独立调用一次 AI。</p><div class="google-research-grid">${analyses.map((entry) => {
     const summary = entry.summary;
     const error = textValue(entry.error?.message);
     const dimensionItems = items.filter((item) => item.dimension === entry.dimension);
