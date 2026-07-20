@@ -258,6 +258,9 @@ export function generateResearchReport(task: ReportTask) {
     .community-insight-list{display:grid;gap:10px}
     .community-insight{border-top:1px solid #e5eefc;padding-top:10px}
     .community-insight:first-child{border-top:0;padding-top:0}
+    .community-evidence-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+    .community-evidence-link{display:inline-flex;align-items:center;padding:2px 6px;border:1px solid #c9daf5;border-radius:4px;background:#f8fbff;color:#2563eb;font-size:11px;text-decoration:none}
+    .community-evidence-link:hover{background:#eff6ff;border-color:#93b4e8}
     .community-analysis-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
     .community-analysis-card{border:1px solid #d8e2f3;border-radius:8px;background:#fff;padding:14px;min-width:0}
     .community-analysis-card h3{margin:0 0 10px;font-size:15px}
@@ -1118,17 +1121,17 @@ function renderCommunitySection(items: CommunityItem[], summary: Record<string, 
     <div class="community-top-grid">
       <div class="community-panel">
         <div class="community-panel-head"><h3>跨平台核心议题 Top 5</h3></div>
-        ${analysis.hotTopics.length ? `<ol class="community-topic-list">${analysis.hotTopics.map(renderCommunityTopic).join("")}</ol>` : `<p class="community-empty">暂无足够证据生成核心议题。</p>`}
+        ${analysis.hotTopics.length ? `<ol class="community-topic-list">${analysis.hotTopics.map((item, index) => renderCommunityTopic(item, index, items)).join("")}</ol>` : `<p class="community-empty">暂无足够证据生成核心议题。</p>`}
       </div>
       <div class="community-panel">
         <div class="community-panel-head"><h3>用户需求与产品选择动因</h3></div>
-        ${renderCommunityInsightList(analysis.alternativeReasons, "暂无明确的产品选择动因。")}
+        ${renderCommunityInsightList(analysis.alternativeReasons, "暂无明确的产品选择动因。", items)}
       </div>
     </div>
     <div class="community-analysis-grid">
-      ${renderCommunityFlowCard(analysis.competitorFlows)}
-      ${renderCommunityGapCard(analysis.reviewGaps)}
-      ${renderCommunityOpportunityCard(analysis.opportunities)}
+      ${renderCommunityFlowCard(analysis.competitorFlows, items)}
+      ${renderCommunityGapCard(analysis.reviewGaps, items)}
+      ${renderCommunityOpportunityCard(analysis.opportunities, items)}
     </div>
     <div>
       <div class="community-panel-head"><h3>代表视频和评论</h3><span class="badge">可打开原始来源</span></div>
@@ -1185,27 +1188,40 @@ function normalizeCommunityAnalysis(summary: Record<string, unknown> | null) {
   return { hotTopics, alternativeReasons, competitorFlows, reviewGaps, opportunities };
 }
 
-function renderCommunityTopic(item: CommunityTopic, index: number) {
+function renderCommunityTopic(item: CommunityTopic, index: number, sourceItems: CommunityItem[]) {
   const platforms = item.platforms.length ? item.platforms : ["社区样本"];
-  return `<li class="community-topic"><span class="community-rank">${index + 1}</span><div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><div class="community-platforms">${platforms.map((platform) => `<span class="community-platform">${escapeHtml(platform)}</span>`).join("")}</div></div><span class="community-evidence">${item.evidenceIndexes.length} 条证据</span></li>`;
+  return `<li class="community-topic"><span class="community-rank">${index + 1}</span><div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><div class="community-platforms">${platforms.map((platform) => `<span class="community-platform">${escapeHtml(platform)}</span>`).join("")}</div>${renderCommunityEvidenceLinks(item.evidenceIndexes, sourceItems)}</div></li>`;
 }
 
-function renderCommunityInsightList(items: CommunityEvidenceInsight[], emptyText: string) {
+function renderCommunityInsightList(items: CommunityEvidenceInsight[], emptyText: string, sourceItems: CommunityItem[]) {
   return items.length
-    ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="community-evidence">${item.evidenceIndexes.length} 条证据</span></div>`).join("")}</div>`
+    ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p>${renderCommunityEvidenceLinks(item.evidenceIndexes, sourceItems)}</div>`).join("")}</div>`
     : `<p class="muted">${escapeHtml(emptyText)}</p>`;
 }
 
-function renderCommunityFlowCard(items: CommunityFlow[]) {
-  return `<div class="community-analysis-card"><h3>社区提及品牌与替代方案</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.fromProduct)} -> ${escapeHtml(item.toProducts.join("、"))}</strong><p>${escapeHtml(item.reason)}</p><div class="community-platforms">${item.toProducts.map((product) => `<span class="community-platform">${escapeHtml(product)}</span>`).join("")}</div></div>`).join("")}</div>` : `<p class="muted">样本中暂无明确提及的品牌或替代方案。</p>`}</div>`;
+function renderCommunityFlowCard(items: CommunityFlow[], sourceItems: CommunityItem[]) {
+  return `<div class="community-analysis-card"><h3>社区提及品牌与替代方案</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.fromProduct)} -> ${escapeHtml(item.toProducts.join("、"))}</strong><p>${escapeHtml(item.reason)}</p><div class="community-platforms">${item.toProducts.map((product) => `<span class="community-platform">${escapeHtml(product)}</span>`).join("")}</div>${renderCommunityEvidenceLinks(item.evidenceIndexes, sourceItems)}</div>`).join("")}</div>` : `<p class="muted">样本中暂无明确提及的品牌或替代方案。</p>`}</div>`;
 }
 
-function renderCommunityGapCard(items: CommunityReviewGap[]) {
-  return `<div class="community-analysis-card"><h3>不同内容来源的观点差异</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>来源一：${escapeHtml(item.reviewerClaim)}</p><p>来源二：${escapeHtml(item.userFeedback)}</p><p>${escapeHtml(item.gap)}</p></div>`).join("")}</div>` : `<p class="muted">暂无多来源观点差异证据。</p>`}</div>`;
+function renderCommunityGapCard(items: CommunityReviewGap[], sourceItems: CommunityItem[]) {
+  return `<div class="community-analysis-card"><h3>不同内容来源的观点差异</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>来源一：${escapeHtml(item.reviewerClaim)}</p><p>来源二：${escapeHtml(item.userFeedback)}</p><p>${escapeHtml(item.gap)}</p>${renderCommunityEvidenceLinks(item.evidenceIndexes, sourceItems)}</div>`).join("")}</div>` : `<p class="muted">暂无多来源观点差异证据。</p>`}</div>`;
 }
 
-function renderCommunityOpportunityCard(items: CommunityOpportunity[]) {
-  return `<div class="community-analysis-card"><h3>待验证的产品启示</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="community-evidence">${item.evidenceIndexes.length} 条证据</span></div>`).join("")}</div>` : `<p class="muted">暂无可提炼的待验证启示。</p>`}</div>`;
+function renderCommunityOpportunityCard(items: CommunityOpportunity[], sourceItems: CommunityItem[]) {
+  return `<div class="community-analysis-card"><h3>待验证的产品启示</h3>${items.length ? `<div class="community-insight-list">${items.map((item) => `<div class="community-insight"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p>${renderCommunityEvidenceLinks(item.evidenceIndexes, sourceItems)}</div>`).join("")}</div>` : `<p class="muted">暂无可提炼的待验证启示。</p>`}</div>`;
+}
+
+function renderCommunityEvidenceLinks(indexes: number[], sourceItems: CommunityItem[]) {
+  const links = indexes.map((index) => {
+    const source = sourceItems[index - 1];
+    if (!source) return null;
+    const label = `证据 ${index}`;
+    const sourceTitle = source.title || trimText(source.content, 80) || `${source.platform} 内容`;
+    return source.sourceUrl
+      ? `<a class="community-evidence-link" href="${escapeHtml(source.sourceUrl)}" target="_blank" rel="noreferrer" title="${escapeHtml(sourceTitle)}">${label}</a>`
+      : `<span class="community-evidence-link" title="${escapeHtml(sourceTitle)}">${label}</span>`;
+  }).filter(Boolean);
+  return links.length ? `<div class="community-evidence-links" aria-label="证据出处">${links.join("")}</div>` : "";
 }
 
 function representativeCommunityItems(items: CommunityItem[]) {
